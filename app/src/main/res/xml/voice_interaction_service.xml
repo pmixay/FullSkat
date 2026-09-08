@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.fullskat.watch.assistant.FullSkatSessionService"
+    android:recognitionService="com.fullskat.watch.assistant.FullSkatRecognitionService"
+    android:settingsActivity="com.fullskat.watch.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="true" />

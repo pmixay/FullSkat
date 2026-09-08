@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fullskat-server"
+version = "0.1.0"
+description = "Server for FullSkat, a Wear OS voice assistant: pairing, speech recognition and OpenRouter chat relay."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+    "pydantic-settings>=2.2",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+whisper = ["faster-whisper>=1.0"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "anyio>=4",
+]
+
+[project.scripts]
+fullskat-server = "fullskat_server.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["fullskat_server*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

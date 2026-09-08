@@ -1,0 +1,294 @@
+"""FastAPI application: pairing, chat relay (SSE) and listening (WebSocket)."""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Literal
+
+import httpx
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field, ValidationError
+
+from .auth import InvalidPasscode, StateStore, TokenRecord, token_hash
+from .config import Settings, load_settings
+from .listen import CLOSE_POLICY_VIOLATION, ListenSession
+from .llm import LLMError, OpenRouterLLM, Usage, trim_history
+from .prompts import build_system_prompt
+from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
+from .stt import STTBackend, create_stt
+
+log = logging.getLogger(__name__)
+
+MAX_CHAT_BODY_BYTES = 64 * 1024
+PASSCODE_RE = re.compile(r"^[0-9]{4,8}$")
+
+
+# ---- errors ---------------------------------------------------------------
+
+
+class ApiError(HTTPException):
+    """HTTP error rendered as {"error": code, "message": text}."""
+
+    def __init__(self, status_code: int, code: str, message: str, headers: dict[str, str] | None = None) -> None:
+        super().__init__(status_code=status_code, detail=message, headers=headers)
+        self.code = code
+
+
+def _error_response(status_code: int, code: str, message: str, headers: dict[str, str] | None = None) -> JSONResponse:
+    return JSONResponse({"error": code, "message": message}, status_code=status_code, headers=headers)
+
+
+def _rate_limited(decision: Decision) -> ApiError:
+    message = "too many failed pairing attempts, try later" if decision.reason == "locked" else "rate limit exceeded"
+    return ApiError(429, decision.reason, message, headers={"Retry-After": str(decision.retry_after)})
+
+
+# ---- request models -------------------------------------------------------
+
+
+class PairRequest(BaseModel):
+    passcode: str
+    device_id: str = Field(min_length=1, max_length=128)
+    device_name: str = Field(default="", max_length=128)
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    dialog_id: str = ""
+    locale: str = Field(default="", max_length=32)
+    model: str | None = None
+    messages: list[ChatMessage] = Field(min_length=1)
+
+
+# ---- helpers --------------------------------------------------------------
+
+
+def client_ip(scope_holder: Request | WebSocket, settings: Settings) -> str:
+    if settings.trust_proxy_headers:
+        forwarded = scope_holder.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return scope_holder.client.host if scope_holder.client else "unknown"
+
+
+def _bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None
+    return token.strip()
+
+
+def _sse(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _limits(settings: Settings) -> dict[str, int]:
+    return {
+        "chat_per_min": settings.chat_per_min,
+        "listen_per_min": settings.listen_per_min,
+        "chat_per_day": settings.chat_per_day,
+        "listen_per_day": settings.listen_per_day,
+    }
+
+
+# ---- app factory ----------------------------------------------------------
+
+
+def create_app(settings: Settings | None = None, stt: STTBackend | None = None) -> FastAPI:
+    settings = settings or load_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        log.info(
+            "FullSkat server ready: model=%s stt=%s data_dir=%s",
+            settings.openrouter_model,
+            settings.stt_backend,
+            settings.data_dir,
+        )
+        try:
+            yield
+        finally:
+            await app.state.http.aclose()
+
+    app = FastAPI(title="FullSkat server", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=120.0))
+    app.state.settings = settings
+    app.state.http = http
+    app.state.store = StateStore(settings.data_dir / "state.json")
+    app.state.llm = OpenRouterLLM(settings, http)
+    app.state.stt = stt or create_stt(settings, http)
+    app.state.pair_limiter = PairLimiter(settings.pair_per_min, settings.pair_lock_failures, settings.pair_lock_minutes)
+    app.state.chat_limiter = SlidingWindowLimiter(settings.chat_per_min, settings.chat_per_day)
+    app.state.listen_limiter = SlidingWindowLimiter(settings.listen_per_min, settings.listen_per_day)
+
+    # ---- error handlers ----
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception(_: Request, exc: HTTPException) -> JSONResponse:
+        code = exc.code if isinstance(exc, ApiError) else "http_error"
+        return _error_response(exc.status_code, code, str(exc.detail), exc.headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return _error_response(400, "invalid_request", _describe_validation(exc.errors()))
+
+    @app.exception_handler(Exception)
+    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
+        log.exception("Unhandled error", exc_info=exc)
+        return _error_response(500, "internal_error", "internal server error")
+
+    # ---- auth ----
+
+    def authenticate(token: str | None) -> tuple[TokenRecord, str]:
+        """Resolve a bearer token to its device record and rate-limit key."""
+        if token is None:
+            raise ApiError(401, "missing_token", "Authorization: Bearer <token> is required")
+        record = app.state.store.lookup_token(token)
+        if record is None:
+            raise ApiError(401, "invalid_token", "token is unknown or was revoked")
+        return record, token_hash(token)
+
+    def require_auth(request: Request) -> tuple[TokenRecord, str]:
+        return authenticate(_bearer_token(request.headers.get("authorization")))
+
+    # ---- routes ----
+
+    @app.get("/healthz")
+    async def healthz() -> dict[str, bool]:
+        return {"ok": True, "paired": app.state.store.is_paired}
+
+    @app.post("/v1/pair")
+    async def pair(request: Request) -> JSONResponse:
+        ip = client_ip(request, settings)
+        decision = app.state.pair_limiter.check(ip)
+        if not decision.allowed:
+            raise _rate_limited(decision)
+        try:
+            body = PairRequest.model_validate(await request.json())
+        except ValueError as exc:
+            raise ApiError(400, "invalid_request", _describe_validation(exc)) from exc
+        if not PASSCODE_RE.fullmatch(body.passcode):
+            raise ApiError(400, "invalid_passcode_format", "passcode must be 4 to 8 digits")
+        try:
+            result = await app.state.store.pair(body.passcode, body.device_id, body.device_name)
+        except InvalidPasscode:
+            app.state.pair_limiter.record_failure(ip)
+            log.warning("Pairing failed for %s from %s", body.device_id, ip)
+            raise ApiError(401, "invalid_passcode", "passcode does not match") from None
+        app.state.pair_limiter.record_success(ip)
+        payload = {
+            "token": result.token,
+            "first_setup": result.first_setup,
+            "server_name": settings.server_name,
+            "model": settings.openrouter_model,
+        }
+        return JSONResponse(payload, status_code=201 if result.first_setup else 200)
+
+    @app.get("/v1/me")
+    async def me(auth: tuple[TokenRecord, str] = Depends(require_auth)) -> dict[str, Any]:
+        record, _ = auth
+        return {
+            "device_id": record.device_id,
+            "device_name": record.device_name,
+            "model": settings.openrouter_model,
+            "limits": _limits(settings),
+        }
+
+    @app.post("/v1/chat")
+    async def chat(request: Request, auth: tuple[TokenRecord, str] = Depends(require_auth)) -> StreamingResponse:
+        record, key = auth
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_CHAT_BODY_BYTES:
+            raise ApiError(413, "payload_too_large", "request body must be at most 64 KiB")
+        raw = await request.body()
+        if len(raw) > MAX_CHAT_BODY_BYTES:
+            raise ApiError(413, "payload_too_large", "request body must be at most 64 KiB")
+        decision = app.state.chat_limiter.check("chat", key)
+        if not decision.allowed:
+            raise _rate_limited(decision)
+        try:
+            body = ChatRequest.model_validate_json(raw)
+        except ValidationError as exc:
+            raise ApiError(400, "invalid_request", _describe_validation(exc)) from exc
+        model = body.model or settings.openrouter_model
+        if model not in settings.allowed_models:
+            raise ApiError(400, "model_not_allowed", f"model {model!r} is not in the server allowlist")
+
+        history = trim_history(
+            [{"role": m.role, "content": m.content} for m in body.messages],
+            settings.max_history_messages,
+            settings.max_history_chars,
+        )
+        messages = [{"role": "system", "content": build_system_prompt(body.locale)}, *history]
+        log.info("chat: device=%s model=%s messages=%d dialog=%s", record.device_id, model, len(history), body.dialog_id)
+
+        async def events() -> AsyncIterator[str]:
+            parts: list[str] = []
+            usage = Usage(prompt_tokens=0, completion_tokens=0)
+            try:
+                async for item in app.state.llm.stream(messages, model):
+                    if isinstance(item, Usage):
+                        usage = item
+                        continue
+                    parts.append(item)
+                    yield _sse("delta", {"text": item})
+            except LLMError as exc:
+                yield _sse("error", {"error": exc.code, "message": exc.message})
+                return
+            except Exception:
+                log.exception("chat stream failed")
+                yield _sse("error", {"error": "internal_error", "message": "chat stream failed"})
+                return
+            yield _sse("done", {"text": "".join(parts), "model": model, "usage": usage.to_json()})
+
+        headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        return StreamingResponse(events(), media_type="text/event-stream", headers=headers)
+
+    @app.websocket("/v1/listen")
+    async def listen(ws: WebSocket) -> None:
+        token = _bearer_token(ws.headers.get("authorization")) or ws.query_params.get("token")
+        await ws.accept()
+        try:
+            record, key = authenticate(token)
+        except ApiError as exc:
+            await _ws_reject(ws, exc.code, str(exc.detail))
+            return
+        decision = app.state.listen_limiter.check("listen", key)
+        if not decision.allowed:
+            await _ws_reject(ws, "rate_limited", f"rate limit exceeded, retry after {decision.retry_after}s")
+            return
+        log.info("listen: device=%s from %s", record.device_id, client_ip(ws, settings))
+        await ListenSession(ws, settings, app.state.stt).run()
+
+    return app
+
+
+async def _ws_reject(ws: WebSocket, code: str, message: str) -> None:
+    await ws.send_text(json.dumps({"type": "error", "error": code, "message": message}, ensure_ascii=False))
+    await ws.close(code=CLOSE_POLICY_VIOLATION)
+
+
+def _describe_validation(errors: ValidationError | list[dict[str, Any]] | Exception) -> str:
+    """One-line human summary of a pydantic validation failure."""
+    if isinstance(errors, ValidationError):
+        items = errors.errors()
+    elif isinstance(errors, list):
+        items = errors
+    else:
+        return str(errors) or "invalid request"
+    parts = []
+    for item in items[:3]:
+        location = ".".join(str(p) for p in item.get("loc", ()) if p != "body")
+        parts.append(f"{location}: {item.get('msg', 'invalid')}" if location else str(item.get("msg", "invalid")))
+    return "; ".join(parts) or "invalid request"

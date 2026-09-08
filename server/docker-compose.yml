@@ -1,0 +1,15 @@
+services:
+  fullskat:
+    build: .
+    image: fullskat-server
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "8080:8080"
+    volumes:
+      - fullskat-data:/data
+    restart: unless-stopped
+
+volumes:
+  fullskat-data:

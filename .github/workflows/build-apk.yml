@@ -1,0 +1,93 @@
+name: Build watch APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Release APK (Wear OS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-37 build-tools;37.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # Optional release signing. Add the secrets below to sign with your own key;
+      # without them the APK is signed with the debug key and still installs on a watch.
+      - name: Prepare signing key
+        if: ${{ env.KEYSTORE_B64 != '' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.FULLSKAT_KEYSTORE_B64 }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "FULLSKAT_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          FULLSKAT_KEYSTORE_PASSWORD: ${{ secrets.FULLSKAT_KEYSTORE_PASSWORD }}
+          FULLSKAT_KEY_ALIAS: ${{ secrets.FULLSKAT_KEY_ALIAS }}
+          FULLSKAT_KEY_PASSWORD: ${{ secrets.FULLSKAT_KEY_PASSWORD }}
+          FULLSKAT_VERSION_CODE: ${{ github.run_number }}
+          FULLSKAT_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('1.0.{0}', github.run_number) }}
+        run: ./gradlew :app:assembleRelease --no-daemon --console=plain
+
+      - name: Collect APK
+        id: apk
+        run: |
+          set -e
+          apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          mkdir -p out
+          cp "$apk" out/fullskat-watch.apk
+          echo "size=$(du -h out/fullskat-watch.apk | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      # The artifact is one zip archive containing only fullskat-watch.apk, compressed at level 9.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fullskat-watch-apk
+          path: out/fullskat-watch.apk
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 30
+
+      - name: Summary
+        run: echo "APK built (${{ steps.apk.outputs.size }}). Download the fullskat-watch-apk artifact; the zip contains only fullskat-watch.apk." >> "$GITHUB_STEP_SUMMARY"
+
+  server-tests:
+    name: Server tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: pytest -q

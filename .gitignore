@@ -1,0 +1,25 @@
+# Gradle / Android
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+*.aab
+*.iml
+.idea/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+# Keystores must never be committed
+*.jks
+*.keystore
+# Server
+server/.venv/
+server/data/
+server/.env
+__pycache__/
+*.pyc
+.pytest_cache/
+# OS
+.DS_Store
