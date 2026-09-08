@@ -27,16 +27,19 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      # The runner's bundled sdkmanager is too old to see API 37 packages, so update the
-      # command-line tools first and install the platform with the new ones.
+      # The runner's bundled sdkmanager is too old to see API 37 packages: fetch the current
+      # command-line tools straight from Google and install the platform with those.
       - name: Install Android SDK platform 37
         run: |
           set -e
           SDK="$ANDROID_HOME"
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "cmdline-tools;latest" > /dev/null
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "platform-tools" "platforms;android-37" "build-tools;37.0.0" > /dev/null
+          TOOLS="$RUNNER_TEMP/cmdline-tools"
+          mkdir -p "$TOOLS"
+          curl -sSL -o "$RUNNER_TEMP/cmdtools.zip" https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
+          unzip -q "$RUNNER_TEMP/cmdtools.zip" -d "$TOOLS"
+          SDKMANAGER="$TOOLS/cmdline-tools/bin/sdkmanager"
+          yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" --sdk_root="$SDK" --install "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
           echo "sdk.dir=$SDK" > local.properties
 
       - uses: gradle/actions/setup-gradle@v4
