@@ -156,6 +156,9 @@ class ListenSession:
         silence = self._vad.silence_ms_since_speech
         if silence is not None and not self._vad.speech_active and silence >= self._settings.silence_ms:
             return True
+        if not self._vad.speech_detected and self._audio_ms >= self._settings.no_speech_timeout_s * 1000:
+            log.info("No speech within %ss; finishing", self._settings.no_speech_timeout_s)
+            return True
         self._maybe_schedule_partial()
         return False
 

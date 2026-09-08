@@ -1,5 +1,6 @@
 package com.fullskat.watch.complication
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
@@ -18,6 +19,7 @@ import com.fullskat.watch.MainActivity
 import com.fullskat.watch.R
 
 /** Round watch-face widget: a mic that opens a fresh dialog and listens. Static, so it never wakes the CPU. */
+@SuppressLint("WearRecents") // NEW_TASK is mandatory when a PendingIntent from a service starts an activity
 class FullSkatComplicationService : SuspendingComplicationDataSourceService() {
 
     override fun getPreviewData(type: ComplicationType): ComplicationData? = build(type)

@@ -19,7 +19,9 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 
 /**
@@ -31,7 +33,7 @@ import kotlinx.coroutines.launch
 class FullSkatRecognitionService : RecognitionService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var current: Job? = null
-    private val stopSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    @Volatile private var stopSignal: MutableSharedFlow<Unit>? = null
 
     override fun onStartListening(recognizerIntent: Intent, listener: Callback) {
         current?.cancel()
@@ -50,22 +52,23 @@ class FullSkatRecognitionService : RecognitionService() {
             }
             try {
                 coroutineScope {
+                    val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@FullSkatRecognitionService.stopSignal = it }
                     val frames = container.audioCapture.frames().shareIn(this, SharingStarted.WhileSubscribed(), replay = 0)
                     val detector = EndpointDetector()
                     val detectorJob = launch {
                         var announced = false
-                        frames.collect { f ->
-                            listener.rmsChanged(f.rms * 40f)
-                            val verdict = detector.feed(f.rms)
-                            if (!announced && detector.speaking) {
-                                announced = true
-                                listener.beginningOfSpeech()
+                        frames
+                            .takeWhile { f ->
+                                listener.rmsChanged(f.rms * 40f)
+                                val verdict = detector.feed(f.rms)
+                                if (!announced && detector.speaking) {
+                                    announced = true
+                                    listener.beginningOfSpeech()
+                                }
+                                verdict == EndpointDetector.Verdict.CONTINUE && stopSignal.replayCache.isEmpty()
                             }
-                            if (verdict != EndpointDetector.Verdict.CONTINUE) {
-                                stopSignal.tryEmit(Unit)
-                                return@collect
-                            }
-                        }
+                            .collect()
+                        stopSignal.tryEmit(Unit)
                     }
                     var delivered = false
                     container.listenClient.listen(cfg.serverUrl, token, lang, frames.map { it.pcm }, stopSignal).collect { ev ->
@@ -99,7 +102,7 @@ class FullSkatRecognitionService : RecognitionService() {
     }
 
     override fun onStopListening(listener: Callback) {
-        stopSignal.tryEmit(Unit)
+        stopSignal?.tryEmit(Unit)
     }
 
     override fun onCancel(listener: Callback) {

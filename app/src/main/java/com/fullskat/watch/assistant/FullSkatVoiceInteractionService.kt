@@ -1,5 +1,6 @@
 package com.fullskat.watch.assistant
 
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -41,6 +42,7 @@ class FullSkatSessionService : VoiceInteractionSessionService() {
  * Assist gesture arrived. We do not draw any session UI: the activity is the UI, so we
  * launch it with the "new dialog + listen" action and immediately hide the session.
  */
+@SuppressLint("WearRecents") // NEW_TASK is mandatory when a service starts an activity
 class FullSkatSession(context: Context) : VoiceInteractionSession(context) {
     override fun onCreate() {
         super.onCreate()

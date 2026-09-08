@@ -45,7 +45,7 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
     val cfg = settings ?: return
     val listState = rememberTransformingLazyColumnState()
     var confirmUnpair by remember { mutableStateOf(false) }
-    val isAssistant = remember { FullSkatVoiceInteractionService.isDefaultAssistant(context) }
+    val isAssistant = FullSkatVoiceInteractionService.isDefaultAssistant(context)
 
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {

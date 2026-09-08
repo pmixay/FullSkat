@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FullSkat</string>
-    <string name="tile_label">FullSkat</string>
-    <string name="complication_label">FullSkat</string>
+    <string name="app_name" translatable="false">FullSkat</string>
+    <string name="tile_label" translatable="false">FullSkat</string>
+    <string name="complication_label" translatable="false">FullSkat</string>
     <string name="complication_short">Ask</string>
     <string name="tile_title">Ask FullSkat</string>
     <string name="tile_hint">Tap to ask</string>
@@ -12,8 +12,6 @@
     </plurals>
     <string name="tile_last_prefix">Last: %1$s</string>
 
-    <string name="you">You</string>
-    <string name="assistant">FullSkat</string>
     <string name="listening">Listening…</string>
     <string name="tap_to_send">tap to send</string>
     <string name="thinking">Thinking…</string>
@@ -21,10 +19,8 @@
     <string name="empty_dialog">Tap the microphone and ask anything.</string>
     <string name="mic">Microphone</string>
     <string name="new_dialog">New dialog</string>
-    <string name="dialogs">Dialogs</string>
     <string name="no_dialogs">No dialogs yet</string>
     <string name="settings">Settings</string>
-    <string name="delete">Delete</string>
     <string name="delete_dialog_q">Delete this dialog?</string>
     <string name="untitled">Untitled</string>
 
@@ -32,9 +28,7 @@
     <string name="pair_server">Server address</string>
     <string name="pair_server_hint">https://example.com</string>
     <string name="pair_passcode">Passcode</string>
-    <string name="pair_passcode_hint">4 to 8 digits. The first watch sets it.</string>
     <string name="pair_connect">Connect</string>
-    <string name="pair_connecting">Connecting…</string>
     <string name="pair_set_first">First watch: this passcode is now the server passcode.</string>
     <string name="pair_wrong">Wrong passcode</string>
     <string name="pair_locked">Too many attempts. Try later.</string>
@@ -43,7 +37,6 @@
     <string name="next">Next</string>
     <string name="back">Back</string>
     <string name="done">Done</string>
-    <string name="edit">Edit</string>
 
     <string name="settings_model">Model</string>
     <string name="settings_language">Speech language</string>
@@ -64,7 +57,4 @@
     <string name="err_rate">Too many requests. Wait a moment.</string>
     <string name="err_server">Server error</string>
     <string name="err_nothing_heard">Nothing heard</string>
-    <string name="retry">Retry</string>
-    <string name="yes">Yes</string>
-    <string name="no">No</string>
 </resources>

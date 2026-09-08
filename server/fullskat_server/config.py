@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     # Listening session timing
     partial_interval_ms: int = Field(default=1000, ge=100)
     silence_ms: int = Field(default=5000, ge=100)
+    no_speech_timeout_s: int = Field(default=30, ge=1)
     max_utterance_s: int = Field(default=60, ge=1)
 
     # Rate limits

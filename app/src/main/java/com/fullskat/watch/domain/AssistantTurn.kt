@@ -18,8 +18,11 @@ import com.fullskat.watch.data.net.ListenClient
 import com.fullskat.watch.data.net.ListenEvent
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.tile.FullSkatTileService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,7 +30,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -62,7 +67,9 @@ class AssistantTurn(
     val state: StateFlow<TurnState> = _state.asStateFlow()
 
     private var job: Job? = null
-    private val stopSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** Stop signal of the turn currently listening; replay = 1 so an early stop is not lost. */
+    @Volatile private var stopSignal: MutableSharedFlow<Unit>? = null
 
     suspend fun createDialog(): String {
         val id = UUID.randomUUID().toString()
@@ -78,7 +85,7 @@ class AssistantTurn(
 
     /** User tapped the mic while listening: finish the utterance now. */
     fun finishListening() {
-        if (_state.value is TurnState.Listening) stopSignal.tryEmit(Unit)
+        if (_state.value is TurnState.Listening) stopSignal?.tryEmit(Unit)
     }
 
     fun cancel() {
@@ -128,19 +135,19 @@ class AssistantTurn(
 
     private suspend fun listen(serverUrl: String, token: String, lang: String): String = kotlinx.coroutines.coroutineScope {
         _state.value = TurnState.Listening("", 0f, false)
+        val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@AssistantTurn.stopSignal = it }
         val frames = audio.frames().shareIn(this, SharingStarted.WhileSubscribed(), replay = 0)
         val detector = EndpointDetector()
+        // Level meter + endpoint detection. Ends (and releases the microphone) as soon as the
+        // detector decides or the user taps, without waiting for the server's final transcript.
         val detectorJob = launch {
-            frames.collect { f ->
-                _state.update { s -> if (s is TurnState.Listening) s.copy(level = f.rms, speaking = detector.speaking) else s }
-                when (detector.feed(f.rms)) {
-                    EndpointDetector.Verdict.CONTINUE -> Unit
-                    EndpointDetector.Verdict.END, EndpointDetector.Verdict.TIMEOUT -> {
-                        stopSignal.tryEmit(Unit)
-                        return@collect
-                    }
+            frames
+                .takeWhile { f ->
+                    _state.update { s -> if (s is TurnState.Listening) s.copy(level = f.rms, speaking = detector.speaking) else s }
+                    detector.feed(f.rms) == EndpointDetector.Verdict.CONTINUE && stopSignal.replayCache.isEmpty()
                 }
-            }
+                .collect()
+            stopSignal.tryEmit(Unit)
         }
         var finalText: String? = null
         var error: ListenEvent.Error? = null
@@ -161,6 +168,7 @@ class AssistantTurn(
             }
         }
         detectorJob.cancel()
+        this@AssistantTurn.stopSignal = null
         error?.let { e ->
             throw when (e.code) {
                 "unauthorized", "invalid_token" -> ApiException.Unauthorized(e.message)
@@ -208,9 +216,17 @@ class AssistantTurn(
                 _state.value = TurnState.Idle
             }
         } catch (e: ApiException) {
-            if (sb.isEmpty()) dao.deleteMessage(msgId) else dao.updateMessageContent(msgId, sb.toString(), pending = false)
+            finalizePartial(msgId, sb)
             _state.value = TurnState.Failed(e.kind(), e.message)
+        } catch (e: CancellationException) {
+            // User tapped Stop: keep whatever streamed so far as the answer.
+            withContext(NonCancellable) { finalizePartial(msgId, sb) }
+            throw e
         }
+    }
+
+    private suspend fun finalizePartial(msgId: Long, sb: StringBuilder) {
+        if (sb.isEmpty()) dao.deleteMessage(msgId) else dao.updateMessageContent(msgId, sb.toString(), pending = false)
     }
 
     private fun haptic(enabled: Boolean, ms: Long) {

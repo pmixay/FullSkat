@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,7 +59,7 @@ private const val KEY_URL = "server_url"
 fun PairScreen(vm: AppViewModel, onPaired: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var url by rememberSaveable { mutableStateOf(settings?.serverUrl.orEmpty()) }
-    var step by rememberSaveable { mutableStateOf(0) }
+    var step by rememberSaveable { mutableIntStateOf(0) }
     val state by vm.pairState.collectAsStateWithLifecycle()
 
     LaunchedEffect(state) {

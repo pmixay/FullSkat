@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Adaptive icons must live in mipmap-anydpi-v26 for AAPT to resolve them; the qualifier is required, not obsolete. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

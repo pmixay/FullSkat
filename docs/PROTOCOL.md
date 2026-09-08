@@ -100,8 +100,8 @@ Server → client (text frames, JSON):
 * `{"type": "error", "error": "<code>", "message": "..."}` then close 1008/1011.
 
 End of utterance is decided by whichever comes first: client `stop`, server
-VAD silence for `SILENCE_MS` (default 5000 ms) after speech was detected, or
-the 60 s cap. The watch itself gives up after 30 s if nothing was heard and no
+VAD silence for `SILENCE_MS` (default 5000 ms) after speech was detected,
+`NO_SPEECH_TIMEOUT_S` (default 30) without any speech, or the 60 s cap. The watch itself gives up after 30 s if nothing was heard and no
 text arrived, and sends `stop` 5 s after the last speech once text exists.
 
 Limits per token: 40 sessions/min, 1000/day (`429` on the upgrade, or
