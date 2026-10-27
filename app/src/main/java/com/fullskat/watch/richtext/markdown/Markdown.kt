@@ -32,17 +32,20 @@ object Markdown {
     )
     private val FENCE = Regex("""^ {0,3}(`{3,}|~{3,})\s*([^`\s{]*)[^`]*$""")
     private val HEADING = Regex("""^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$""")
-    private val RULE = Regex("""^ {0,3}([-*_])(\s*\1){2,}\s*$""")
     private val LIST = Regex("""^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$""")
-    private val TABLE_SEP = Regex("""^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$""")
     private val BEGIN_ENV = Regex("""^\s*\\begin\{([A-Za-z*]+)\}""")
 
     fun parse(source: String): List<Block> {
         val lines = source.replace("\r\n", "\n").replace('\r', '\n').split('\n')
-        return parseBlocks(lines)
+        return parseBlocks(lines, 0)
     }
 
-    private fun parseBlocks(lines: List<String>): List<Block> {
+    private const val MAX_BLOCK_DEPTH = 8
+    private const val MAX_INLINE_DEPTH = 10
+
+    private fun parseBlocks(lines: List<String>, depth: Int): List<Block> {
+        // Quotes and list items nest by recursion: past a sane depth the rest is plain text.
+        if (depth > MAX_BLOCK_DEPTH) return listOf(Paragraph(parseInlines(lines.joinToString("\n").trim())))
         val blocks = ArrayList<Block>()
         val para = ArrayList<String>()
         fun flush() {
@@ -118,7 +121,7 @@ object Markdown {
             }
 
             // horizontal rule
-            if (RULE.matches(line)) {
+            if (isRule(line)) {
                 flush()
                 blocks += Rule
                 i++
@@ -133,13 +136,13 @@ object Markdown {
                     inner += lines[i].trim().removePrefix(">").removePrefix(" ")
                     i++
                 }
-                blocks += Quote(parseBlocks(inner))
+                blocks += Quote(parseBlocks(inner, depth + 1))
                 continue
             }
 
             // list item
             val li = LIST.matchEntire(line)
-            if (li != null && !RULE.matches(line)) {
+            if (li != null && !isRule(line)) {
                 flush()
                 val markerIndent = li.groupValues[1].length
                 var marker = li.groupValues[2]
@@ -176,12 +179,12 @@ object Markdown {
                         i++
                     } else break
                 }
-                blocks += ListItem(marker, parseBlocks(content))
+                blocks += ListItem(marker, parseBlocks(content, depth + 1))
                 continue
             }
 
             // table
-            if (line.contains('|') && i + 1 < n && TABLE_SEP.matches(lines[i + 1]) && lines[i + 1].contains('-')) {
+            if (line.contains('|') && i + 1 < n && isTableSeparator(lines[i + 1])) {
                 val header = splitRow(line)
                 val sep = splitRow(lines[i + 1])
                 if (header.size == sep.size || header.size > 1) {
@@ -210,6 +213,34 @@ object Markdown {
         }
         flush()
         return blocks
+    }
+
+    /** Three or more of the same -, * or _ (spaces allowed between), nothing else. Plain loops: regex group repeats recurse. */
+    private fun isRule(line: String): Boolean {
+        var indent = 0
+        while (indent < line.length && line[indent] == ' ') indent++
+        if (indent > 3 || indent >= line.length) return false
+        val ch = line[indent]
+        if (ch != '-' && ch != '*' && ch != '_') return false
+        var count = 0
+        for (k in indent until line.length) {
+            val c = line[k]
+            if (c == ch) count++ else if (c != ' ' && c != '\t') return false
+        }
+        return count >= 3
+    }
+
+    /** The |---|:--:| line under a table header. */
+    private fun isTableSeparator(line: String): Boolean {
+        var any = false
+        for (cell in line.trim().trim('|').split('|')) {
+            val t = cell.trim()
+            if (t.isEmpty()) return false
+            val body = t.removePrefix(":").removeSuffix(":")
+            if (body.isEmpty() || !body.all { it == '-' }) return false
+            any = true
+        }
+        return any
     }
 
     private fun indentOf(s: String): Int {
@@ -271,7 +302,7 @@ object Markdown {
 
     fun parseInlines(source: String): List<Inline> {
         val out = ArrayList<Inline>()
-        parseInto(source, out, bold = false, italic = false, strike = false)
+        parseInto(source, out, bold = false, italic = false, strike = false, depth = 0)
         return merge(out)
     }
 
@@ -290,7 +321,8 @@ object Markdown {
 
     private fun isWordChar(c: Char) = c.isLetterOrDigit()
 
-    private fun parseInto(s: String, out: MutableList<Inline>, bold: Boolean, italic: Boolean, strike: Boolean) {
+    private fun parseInto(s: String, out: MutableList<Inline>, bold: Boolean, italic: Boolean, strike: Boolean, depth: Int) {
+        if (depth > MAX_INLINE_DEPTH) { out += Text(s, bold, italic, strike); return }
         val buf = StringBuilder()
         fun text() {
             if (buf.isNotEmpty()) { out += Text(buf.toString(), bold, italic, strike); buf.clear() }
@@ -333,20 +365,20 @@ object Markdown {
                     val e = findCloser(s, i + 2, "$c$c")
                     val canOpen = i + 2 < n && !s[i + 2].isWhitespace() && (c == '*' || i == 0 || !isWordChar(s[i - 1]))
                     if (canOpen && e > 0) {
-                        text(); parseInto(s.substring(i + 2, e), out, true, italic, strike); i = e + 2
+                        text(); parseInto(s.substring(i + 2, e), out, true, italic, strike, depth + 1); i = e + 2
                     } else { buf.append(c).append(c); i += 2 }
                 }
                 (c == '*' || c == '_') -> {
                     val canOpen = i + 1 < n && !s[i + 1].isWhitespace() && (c == '*' || i == 0 || !isWordChar(s[i - 1]))
                     val e = if (canOpen) findCloser(s, i + 1, c.toString()) else -1
                     if (e > 0) {
-                        text(); parseInto(s.substring(i + 1, e), out, bold, true, strike); i = e + 1
+                        text(); parseInto(s.substring(i + 1, e), out, bold, true, strike, depth + 1); i = e + 1
                     } else { buf.append(c); i++ }
                 }
                 c == '~' && i + 1 < n && s[i + 1] == '~' -> {
                     val e = findCloser(s, i + 2, "~~")
                     if (e > 0 && i + 2 < n && !s[i + 2].isWhitespace()) {
-                        text(); parseInto(s.substring(i + 2, e), out, bold, italic, true); i = e + 2
+                        text(); parseInto(s.substring(i + 2, e), out, bold, italic, true, depth + 1); i = e + 2
                     } else { buf.append("~~"); i += 2 }
                 }
                 c == '!' && i + 1 < n && s[i + 1] == '[' -> {
@@ -355,15 +387,20 @@ object Markdown {
                 }
                 c == '[' -> {
                     val link = linkAt(s, i)
-                    if (link != null) { text(); parseInto(link.first, out, bold, italic, strike); i = link.second } else { buf.append(c); i++ }
+                    if (link != null) { text(); parseInto(link.first, out, bold, italic, strike, depth + 1); i = link.second } else { buf.append(c); i++ }
                 }
                 c == '<' -> {
-                    val br = Regex("""^<br\s*/?>""", RegexOption.IGNORE_CASE).find(s.substring(i, minOf(n, i + 6)))
-                    if (br != null) { text(); out += Break; i += br.value.length }
-                    else {
-                        val auto = Regex("""^<((?:https?://|mailto:)[^>\s]+)>""").find(s.substring(i))
-                        if (auto != null) { buf.append(auto.groupValues[1]); i += auto.value.length } else { buf.append(c); i++ }
+                    if (s.startsWith("<br", i, ignoreCase = true)) {
+                        var k = i + 3
+                        while (k < n && s[k] == ' ') k++
+                        if (k < n && s[k] == '/') k++
+                        if (k < n && s[k] == '>') { text(); out += Break; i = k + 1; continue }
                     }
+                    if (s.startsWith("<http", i) || s.startsWith("<mailto:", i)) {
+                        val e = s.indexOf('>', i)
+                        if (e > i && s.substring(i + 1, e).none { it.isWhitespace() }) { buf.append(s, i + 1, e); i = e + 1; continue }
+                    }
+                    buf.append(c); i++
                 }
                 else -> { buf.append(c); i++ }
             }

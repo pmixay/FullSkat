@@ -107,6 +107,14 @@ class MarkdownTest {
         assertTrue(t.rows[0][1].single() is Math)
     }
 
+    @Test fun `deeply nested input cannot overflow the stack`() {
+        blocks(">".repeat(20000) + " x")
+        blocks("- ".repeat(5000) + "x")
+        inlines("*".repeat(20000))
+        inlines("**a ".repeat(5000) + "**".repeat(5000))
+        inlines("[".repeat(20000))
+    }
+
     @Test fun `never throws on junk`() {
         val rnd = java.util.Random(7)
         val alphabet = "abc \n\n*_`~\$\\[]()<>|#>-+1.:=\"'{}^!&%"
