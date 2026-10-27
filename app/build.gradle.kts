@@ -1,3 +1,4 @@
+import java.net.URI
 import java.security.MessageDigest
 import java.util.Properties
 import javax.inject.Inject
@@ -28,7 +29,7 @@ abstract class FetchAsrModel : DefaultTask() {
         val archive = temporaryDir.resolve("model.tar.bz2")
         fun digest() = MessageDigest.getInstance("SHA-256").digest(archive.readBytes()).joinToString("") { "%02x".format(it) }
         if (!archive.exists() || digest() != sha256.get()) {
-            java.net.URI(url.get()).toURL().openStream().use { input -> archive.outputStream().use { input.copyTo(it) } }
+            URI(url.get()).toURL().openStream().use { input -> archive.outputStream().use { input.copyTo(it) } }
             check(digest() == sha256.get()) { "Checksum mismatch for ${url.get()}" }
         }
         val wanted = files.get()
