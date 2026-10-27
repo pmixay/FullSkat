@@ -65,6 +65,8 @@ class ChatRequest(BaseModel):
     locale: str = Field(default="", max_length=32)
     model: str | None = None
     messages: list[ChatMessage] = Field(min_length=1)
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    web_search: bool | None = None
 
 
 # ---- helpers --------------------------------------------------------------
@@ -89,6 +91,13 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _default_effort(settings: Settings) -> str:
+    """The server's default reasoning effort for the active provider ("" if none)."""
+    if settings.llm_provider == "anthropic":
+        return settings.anthropic_effort
+    return settings.openrouter_reasoning_effort
 
 
 def _limits(settings: Settings) -> dict[str, int]:
@@ -191,6 +200,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "server_name": settings.server_name,
             "model": settings.chat_model,
             "models": settings.allowed_models,
+            "effort": _default_effort(settings),
+            "web_search": settings.web_search,
         }
         return JSONResponse(payload, status_code=201 if result.first_setup else 200)
 
@@ -202,6 +213,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "device_name": record.device_name,
             "model": settings.chat_model,
             "models": settings.allowed_models,
+            "effort": _default_effort(settings),
+            "web_search": settings.web_search,
             "limits": _limits(settings),
         }
 
@@ -238,7 +251,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             thinking_parts: list[str] = []
             usage = Usage(prompt_tokens=0, completion_tokens=0)
             try:
-                async for item in app.state.llm.stream(messages, model):
+                async for item in app.state.llm.stream(
+                    messages, model, effort=body.effort, web_search=body.web_search
+                ):
                     if isinstance(item, Usage):
                         usage = item
                         continue

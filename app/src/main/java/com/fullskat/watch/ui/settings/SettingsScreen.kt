@@ -39,7 +39,7 @@ import com.fullskat.watch.ui.theme.Tokens
 private val itemModifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, onUnpaired: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, onRepair: () -> Unit, onUnpaired: () -> Unit) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cfg = settings ?: return
@@ -56,6 +56,22 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_model)) },
                     secondaryLabel = { Text(modelDisplayName(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            item {
+                FilledTonalButton(
+                    onClick = onEffort,
+                    modifier = itemModifier,
+                    label = { Text(stringResource(R.string.settings_effort)) },
+                    secondaryLabel = { Text(effortSummary(cfg.effort, cfg.serverEffort), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            item {
+                SwitchButton(
+                    checked = cfg.webSearch,
+                    onCheckedChange = vm::setWebSearch,
+                    modifier = itemModifier,
+                    label = { Text(stringResource(R.string.settings_web_search)) },
                 )
             }
             item {
@@ -172,4 +188,55 @@ internal fun modelDisplayName(id: String): String {
     if (family.isEmpty() && version.isEmpty()) return id
     val familyName = family.joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
     return listOf(familyName, version.joinToString(".")).filter { it.isNotEmpty() }.joinToString(" ")
+}
+
+@Composable
+private fun effortName(effort: String): String = stringResource(
+    when (effort) {
+        "low" -> R.string.effort_low
+        "medium" -> R.string.effort_medium
+        "high" -> R.string.effort_high
+        "xhigh" -> R.string.effort_xhigh
+        else -> R.string.effort_max
+    },
+)
+
+/** "Medium", or "Default (Medium)" when the watch leaves the choice to the server. */
+@Composable
+private fun effortSummary(effort: String?, serverEffort: String?): String {
+    if (effort != null) return effortName(effort)
+    val default = stringResource(R.string.effort_default)
+    return if (serverEffort != null && serverEffort in AppViewModel.EFFORTS) "$default (${effortName(serverEffort)})" else default
+}
+
+@Composable
+fun EffortScreen(vm: AppViewModel, onDone: () -> Unit) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val cfg = settings ?: return
+    val listState = rememberTransformingLazyColumnState()
+    val options: List<String?> = listOf<String?>(null) + AppViewModel.EFFORTS
+
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+            item { ListHeader { Text(stringResource(R.string.settings_effort), color = Tokens.accent) } }
+            items(options.size) { i ->
+                val e = options[i]
+                val serverEffort = cfg.serverEffort
+                RadioButton(
+                    selected = e == cfg.effort,
+                    onSelect = {
+                        vm.setEffort(e)
+                        onDone()
+                    },
+                    modifier = itemModifier,
+                    label = { Text(if (e == null) stringResource(R.string.effort_default) else effortName(e), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = if (e == null && serverEffort != null && serverEffort in AppViewModel.EFFORTS) {
+                        { Text(effortName(serverEffort), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
 }

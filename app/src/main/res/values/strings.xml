@@ -50,4 +50,13 @@
     <string name="thinking_title">Thinking</string>
     <string name="expand">Expand</string>
     <string name="collapse">Collapse</string>
+    <string name="scroll_to_latest">Scroll to latest</string>
+    <string name="settings_effort">Thinking effort</string>
+    <string name="settings_web_search">Web search</string>
+    <string name="effort_default">Default</string>
+    <string name="effort_low">Low</string>
+    <string name="effort_medium">Medium</string>
+    <string name="effort_high">High</string>
+    <string name="effort_xhigh">Extra high</string>
+    <string name="effort_max">Max</string>
 </resources>

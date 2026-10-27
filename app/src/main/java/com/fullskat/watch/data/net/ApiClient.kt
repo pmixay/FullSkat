@@ -53,6 +53,7 @@ class ApiClient {
                             serverName = o.optString("server_name").ifBlank { null },
                             model = o.optString("model").ifBlank { null },
                             models = o.optStrings("models"),
+                            effort = o.optString("effort").ifBlank { null },
                         )
                     }
                     401 -> throw ApiException.WrongPasscode()
@@ -72,7 +73,7 @@ class ApiClient {
             val text = resp.body.string()
             when (resp.code) {
                 200 -> JSONObject(text).let {
-                    MeResult(it.optString("model").ifBlank { null }, it.optStrings("models"), it.optString("device_name").ifBlank { null })
+                    MeResult(it.optString("model").ifBlank { null }, it.optStrings("models"), it.optString("effort").ifBlank { null }, it.optString("device_name").ifBlank { null })
                 }
                 401 -> throw ApiException.Unauthorized(errorMessage(text))
                 429 -> throw ApiException.RateLimited(resp.retryAfter())
@@ -89,6 +90,8 @@ class ApiClient {
         messages: List<ChatMessage>,
         model: String?,
         locale: String,
+        effort: String?,
+        webSearch: Boolean,
     ): Flow<ChatEvent> = flow {
         val body = JSONObject()
             .put("dialog_id", dialogId)
@@ -97,6 +100,8 @@ class ApiClient {
                 messages.forEach { put(JSONObject().put("role", it.role).put("content", it.content)) }
             })
         if (model != null) body.put("model", model)
+        if (effort != null) body.put("effort", effort)
+        body.put("web_search", webSearch)
         val req = Request.Builder()
             .url("${serverUrl.trimEnd('/')}/v1/chat")
             .header("Authorization", "Bearer $token")

@@ -78,8 +78,10 @@ def llm_with(settings: Settings, turns: list[Any]) -> tuple[AnthropicLLM, FakeMe
     return llm, fake
 
 
-async def collect(llm: AnthropicLLM, messages: list[dict[str, str]], model: str = "claude-haiku-5-5") -> list[Any]:
-    return [item async for item in llm.stream(messages, model)]
+async def collect(
+    llm: AnthropicLLM, messages: list[dict[str, str]], model: str = "claude-haiku-5-5", **options: Any
+) -> list[Any]:
+    return [item async for item in llm.stream(messages, model, **options)]
 
 
 MESSAGES = [
@@ -144,6 +146,27 @@ async def test_anthropic_web_search_and_effort_can_be_disabled(tmp_path: Path) -
     assert "output_config" not in fake.requests[0]
 
 
+async def test_anthropic_effort_override_and_web_search_off(tmp_path: Path) -> None:
+    llm, fake = llm_with(make_settings(tmp_path), [([], final_message())])
+    await collect(llm, MESSAGES, effort="max", web_search=False)
+    assert fake.requests[0]["output_config"] == {"effort": "max"}
+    assert "tools" not in fake.requests[0]
+
+
+async def test_anthropic_web_search_true_keeps_default_tool_and_effort(tmp_path: Path) -> None:
+    llm, fake = llm_with(make_settings(tmp_path), [([], final_message())])
+    await collect(llm, MESSAGES, web_search=True)
+    assert fake.requests[0]["output_config"] == {"effort": "medium"}
+    assert fake.requests[0]["tools"][0]["name"] == "web_search"
+
+
+async def test_anthropic_client_cannot_enable_web_search_when_server_disabled(tmp_path: Path) -> None:
+    llm, fake = llm_with(make_settings(tmp_path, web_search=False, anthropic_effort=""), [([], final_message())])
+    await collect(llm, MESSAGES, effort="high", web_search=True)
+    assert "tools" not in fake.requests[0]
+    assert fake.requests[0]["output_config"] == {"effort": "high"}
+
+
 async def test_anthropic_resumes_pause_turn(tmp_path: Path) -> None:
     paused = final_message("pause_turn", content=["server-tool-blocks"], inp=100, out=5)
     turns = [([("thinking", "t"), "a"], paused), (["b"], final_message(inp=7, out=2))]
@@ -190,6 +213,25 @@ def test_openrouter_body_enables_web_plugin(tmp_path: Path) -> None:
     assert body["plugins"] == [{"id": "web", "max_results": 3}]
     off = OpenRouterLLM(make_settings(tmp_path, llm_provider="openrouter", web_search=False), httpx.AsyncClient())
     assert "plugins" not in off._body([{"role": "user", "content": "hi"}], "openai/gpt-5.5")
+
+
+def test_openrouter_body_effort_override_maps_max_and_honors_web_flag(tmp_path: Path) -> None:
+    messages = [{"role": "user", "content": "hi"}]
+    llm = OpenRouterLLM(make_settings(tmp_path, llm_provider="openrouter"), httpx.AsyncClient())
+    assert llm._body(messages, "m")["reasoning"] == {"effort": "high"}  # server default
+    assert llm._body(messages, "m", effort="max")["reasoning"] == {"effort": "xhigh"}
+    assert llm._body(messages, "m", effort="low")["reasoning"] == {"effort": "low"}
+    assert "plugins" not in llm._body(messages, "m", web_search=False)
+    assert "plugins" in llm._body(messages, "m", web_search=True)
+
+    off = OpenRouterLLM(
+        make_settings(tmp_path, llm_provider="openrouter", web_search=False, openrouter_reasoning_effort=""),
+        httpx.AsyncClient(),
+    )
+    body = off._body(messages, "m", effort="medium", web_search=True)
+    assert "plugins" not in body  # the server switch wins
+    assert body["reasoning"] == {"effort": "medium"}
+    assert "reasoning" not in off._body(messages, "m")
 
 
 def test_openrouter_delta_parsing_extracts_reasoning() -> None:

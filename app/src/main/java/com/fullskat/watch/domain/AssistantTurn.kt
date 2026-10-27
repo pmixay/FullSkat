@@ -130,7 +130,7 @@ class AssistantTurn(
             dao.touchDialog(dialogId, now)
         }
         _state.value = TurnState.Thinking
-        answer(dialogId, cfg.serverUrl, token, cfg.model)
+        answer(dialogId, cfg.serverUrl, token, cfg.model, cfg.effort, cfg.webSearch)
         FullSkatTileService.requestUpdate(context)
     }
 
@@ -178,7 +178,7 @@ class AssistantTurn(
         finalText.orEmpty().trim()
     }
 
-    private suspend fun answer(dialogId: String, serverUrl: String, token: String, model: String?) {
+    private suspend fun answer(dialogId: String, serverUrl: String, token: String, model: String?, effort: String?, webSearch: Boolean) {
         val history = dao.messages(dialogId)
             .filter { !it.pending || it.content.isNotBlank() }
             .map { ChatMessage(if (it.role == Role.USER) "user" else "assistant", it.content) }
@@ -196,7 +196,7 @@ class AssistantTurn(
             }
         }
         try {
-            api.chat(serverUrl, token, dialogId, history, model, Locale.getDefault().toLanguageTag()).collect { ev ->
+            api.chat(serverUrl, token, dialogId, history, model, Locale.getDefault().toLanguageTag(), effort, webSearch).collect { ev ->
                 when (ev) {
                     is ChatEvent.Thinking -> {
                         tb.append(ev.text)

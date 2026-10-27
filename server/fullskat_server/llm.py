@@ -98,6 +98,11 @@ def extract_upstream_message(body: bytes) -> str:
     return "upstream request failed"
 
 
+def _web_search_enabled(settings: Settings, requested: bool | None) -> bool:
+    """WEB_SEARCH is the master switch: a request can turn search off, never on."""
+    return settings.web_search and requested is not False
+
+
 class OpenRouterLLM:
     """Streams text deltas from OpenRouter's OpenAI-compatible chat endpoint."""
 
@@ -114,7 +119,9 @@ class OpenRouterLLM:
             "Accept": "text/event-stream",
         }
 
-    def _body(self, messages: list[dict[str, str]], model: str) -> dict[str, Any]:
+    def _body(
+        self, messages: list[dict[str, str]], model: str, effort: str | None = None, web_search: bool | None = None
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -122,14 +129,22 @@ class OpenRouterLLM:
             "max_tokens": self._settings.max_completion_tokens,
             "usage": {"include": True},
         }
-        effort = self._settings.reasoning_effort
-        if effort:
-            body["reasoning"] = {"effort": effort}
-        if self._settings.web_search:
+        effective_effort = effort or self._settings.reasoning_effort
+        if effective_effort:
+            # OpenRouter has no "max" level; its top level is "xhigh".
+            body["reasoning"] = {"effort": "xhigh" if effective_effort == "max" else effective_effort}
+        if _web_search_enabled(self._settings, web_search):
             body["plugins"] = [{"id": "web", "max_results": self._settings.web_search_max_uses}]
         return body
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        effort: str | None = None,
+        web_search: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Usage]:
         """Yield text deltas (str), Thinking pieces and, if the upstream reports it, a final Usage item.
 
         Raises LLMError for HTTP errors, transport failures and mid-stream error chunks.
@@ -139,7 +154,7 @@ class OpenRouterLLM:
         url = f"{self._settings.openrouter_base_url.rstrip('/')}/chat/completions"
         try:
             async with self._client.stream(
-                "POST", url, headers=self._headers(), json=self._body(messages, model)
+                "POST", url, headers=self._headers(), json=self._body(messages, model, effort, web_search)
             ) as response:
                 if response.status_code >= 400:
                     body = await response.aread()
@@ -203,7 +218,14 @@ class AnthropicLLM:
     async def aclose(self) -> None:
         await self._client.close()
 
-    def _request(self, system: str, conversation: list[dict[str, Any]], model: str) -> dict[str, Any]:
+    def _request(
+        self,
+        system: str,
+        conversation: list[dict[str, Any]],
+        model: str,
+        effort: str | None = None,
+        web_search: bool | None = None,
+    ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": model,
             "max_tokens": self._settings.anthropic_max_tokens,
@@ -212,22 +234,30 @@ class AnthropicLLM:
         }
         if self._settings.show_thinking:
             request["thinking"] = {"type": "adaptive", "display": "summarized"}
-        if self._settings.anthropic_effort:
-            request["output_config"] = {"effort": self._settings.anthropic_effort}
-        if self._settings.web_search:
+        effective_effort = effort or self._settings.anthropic_effort
+        if effective_effort:
+            request["output_config"] = {"effort": effective_effort}
+        if _web_search_enabled(self._settings, web_search):
             request["tools"] = [
                 {"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": self._settings.web_search_max_uses}
             ]
         return request
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        effort: str | None = None,
+        web_search: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Usage]:
         """Yield text deltas (str), Thinking pieces and a final Usage item. Raises LLMError like OpenRouterLLM."""
         if not self._settings.anthropic_api_key:
             raise LLMError("upstream_auth", "ANTHROPIC_API_KEY is not configured on the server")
         system, conversation = _anthropic_conversation(messages)
         if not conversation:
             raise LLMError("upstream_error", "no user message to answer")
-        request = self._request(system, conversation, model)
+        request = self._request(system, conversation, model, effort, web_search)
         prompt_tokens = completion_tokens = 0
         try:
             for _ in range(MAX_PAUSE_TURNS):

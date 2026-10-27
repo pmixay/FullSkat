@@ -16,9 +16,18 @@ class FakeLLM:
         self.deltas = deltas or [Thinking("Greeting "), Thinking("the user."), "Hel", "lo", " world"]
         self.error = error
         self.requests: list[tuple[list[dict[str, str]], str]] = []
+        self.options: list[dict[str, object]] = []
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str,
+        *,
+        effort: str | None = None,
+        web_search: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Usage]:
         self.requests.append((messages, model))
+        self.options.append({"effort": effort, "web_search": web_search})
         if self.error:
             raise self.error
         for delta in self.deltas:
@@ -78,6 +87,8 @@ async def test_pair_flow_201_200_401(client: AsyncClient) -> None:
     assert body["server_name"] == "FullSkat"
     assert body["model"] == "claude-haiku-5-5"
     assert body["models"][0] == "claude-haiku-5-5"
+    assert body["effort"] == "medium"
+    assert body["web_search"] is True
     assert len(body["token"]) >= 43
 
     second = await client.post("/v1/pair", json={**PAIR, "device_id": "dev-2"})
@@ -141,8 +152,24 @@ async def test_me(client: AsyncClient) -> None:
         "device_name": "Galaxy Watch7",
         "model": "claude-haiku-5-5",
         "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"],
+        "effort": "medium",
+        "web_search": True,
         "limits": {"chat_per_min": 20, "chat_per_day": 500},
     }
+
+
+async def test_pair_and_me_report_openrouter_defaults(tmp_path: Path) -> None:
+    settings = Settings(
+        _env_file=None, data_dir=tmp_path, llm_provider="openrouter", openrouter_reasoning_effort="", web_search=False
+    )
+    app = create_app(settings=settings)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        paired = (await client.post("/v1/pair", json=PAIR)).json()
+        assert paired["effort"] == ""
+        assert paired["web_search"] is False
+        me = await client.get("/v1/me", headers={"Authorization": f"Bearer {paired['token']}"})
+        assert me.json()["effort"] == ""
+        assert me.json()["web_search"] is False
 
 
 async def test_me_rejects_missing_and_bad_tokens(client: AsyncClient) -> None:
@@ -187,6 +214,37 @@ async def test_chat_streams_deltas_and_done(client: AsyncClient, app: FastAPI) -
     assert "LaTeX" in messages[0]["content"]
     assert "User locale: ru-RU" in messages[0]["content"]
     assert messages[1:] == [{"role": "user", "content": "Привет"}]
+
+
+async def test_chat_passes_effort_and_web_search(client: AsyncClient, app: FastAPI) -> None:
+    token = await pair(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    messages = [{"role": "user", "content": "hi"}]
+
+    await client.post("/v1/chat", json={"messages": messages}, headers=headers)
+    assert app.state.llm.options[-1] == {"effort": None, "web_search": None}
+
+    await client.post("/v1/chat", json={"messages": messages, "effort": None, "web_search": None}, headers=headers)
+    assert app.state.llm.options[-1] == {"effort": None, "web_search": None}
+
+    for effort in ("low", "medium", "high", "xhigh", "max"):
+        ok = await client.post("/v1/chat", json={"messages": messages, "effort": effort, "web_search": False}, headers=headers)
+        assert ok.status_code == 200
+        assert app.state.llm.options[-1] == {"effort": effort, "web_search": False}
+
+    await client.post("/v1/chat", json={"messages": messages, "web_search": True}, headers=headers)
+    assert app.state.llm.options[-1] == {"effort": None, "web_search": True}
+
+
+async def test_chat_rejects_invalid_effort_and_web_search(client: AsyncClient, app: FastAPI) -> None:
+    token = await pair(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    messages = [{"role": "user", "content": "hi"}]
+    for extra in ({"effort": "extreme"}, {"effort": ""}, {"effort": 3}, {"web_search": "maybe"}):
+        response = await client.post("/v1/chat", json={"messages": messages, **extra}, headers=headers)
+        assert response.status_code == 400, extra
+        assert response.json()["error"] == "invalid_request"
+    assert app.state.llm.options == []
 
 
 async def test_chat_done_has_empty_thinking_without_summary(client: AsyncClient, app: FastAPI) -> None:

@@ -109,6 +109,13 @@ most `WEB_SEARCH_MAX_USES` searches per answer (default 3); it has to be enabled
 organization in the Claude Console, and each search is billed on top of tokens. With
 OpenRouter the `web` plugin is used. Set `WEB_SEARCH=false` to turn it off.
 
+`WEB_SEARCH` is a master switch: the watch can send `"web_search": false` to turn search off for
+a request, but can never turn it on when the operator disabled it. Likewise the watch may send
+`"effort"` (`low` | `medium` | `high` | `xhigh` | `max`) per request to override
+`ANTHROPIC_EFFORT` / `OPENROUTER_REASONING_EFFORT` (for OpenRouter, `max` is sent as `xhigh`).
+The defaults are reported to the watch as `effort` and `web_search` in the pairing and `/v1/me`
+responses.
+
 ## Cost notes
 
 * Every chat request sends the system prompt plus up to 12k characters of history;

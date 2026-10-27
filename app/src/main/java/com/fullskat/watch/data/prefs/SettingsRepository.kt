@@ -24,6 +24,10 @@ data class Settings(
     val serverModel: String?,
     val serverModels: List<String>,
     val serverName: String?,
+    /** Reasoning effort chosen on the watch; null = whatever the server defaults to. */
+    val effort: String?,
+    val serverEffort: String?,
+    val webSearch: Boolean,
     val haptics: Boolean,
 ) {
     val paired: Boolean get() = !token.isNullOrBlank()
@@ -38,6 +42,9 @@ class SettingsRepository(private val context: Context) {
         val SERVER_MODEL = stringPreferencesKey("server_model")
         val SERVER_MODELS = stringPreferencesKey("server_models")
         val SERVER_NAME = stringPreferencesKey("server_name")
+        val EFFORT = stringPreferencesKey("effort")
+        val SERVER_EFFORT = stringPreferencesKey("server_effort")
+        val WEB_SEARCH = booleanPreferencesKey("web_search")
         val HAPTICS = booleanPreferencesKey("haptics")
     }
 
@@ -51,6 +58,9 @@ class SettingsRepository(private val context: Context) {
             serverModel = p[Keys.SERVER_MODEL],
             serverModels = p[Keys.SERVER_MODELS]?.lines()?.filter { it.isNotBlank() }.orEmpty(),
             serverName = p[Keys.SERVER_NAME],
+            effort = p[Keys.EFFORT],
+            serverEffort = p[Keys.SERVER_EFFORT],
+            webSearch = p[Keys.WEB_SEARCH] ?: true,
             haptics = p[Keys.HAPTICS] ?: true,
         )
     }
@@ -66,18 +76,22 @@ class SettingsRepository(private val context: Context) {
         return id
     }
 
-    suspend fun savePairing(token: String, serverName: String?, serverModel: String?, serverModels: List<String>) {
+    suspend fun savePairing(token: String, serverName: String?, serverModel: String?, serverModels: List<String>, serverEffort: String?) {
         context.dataStore.edit {
             it[Keys.SERVER_URL] = ServerEndpoint.URL
             it[Keys.TOKEN_ENC] = KeystoreCrypto.encrypt(token)
             if (serverName != null) it[Keys.SERVER_NAME] = serverName
+            if (serverEffort != null) it[Keys.SERVER_EFFORT] = serverEffort
             applyServerModels(it, serverModel, serverModels)
         }
     }
 
     /** Stores the server's default model and allowlist; drops a personal choice the server no longer offers. */
-    suspend fun saveServerModels(serverModel: String?, serverModels: List<String>) {
-        context.dataStore.edit { applyServerModels(it, serverModel, serverModels) }
+    suspend fun saveServerModels(serverModel: String?, serverModels: List<String>, serverEffort: String? = null) {
+        context.dataStore.edit {
+            if (serverEffort != null) it[Keys.SERVER_EFFORT] = serverEffort
+            applyServerModels(it, serverModel, serverModels)
+        }
     }
 
     private fun applyServerModels(prefs: MutablePreferences, serverModel: String?, serverModels: List<String>) {
@@ -99,6 +113,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun setModel(model: String?) = context.dataStore.edit {
         if (model == null) it.remove(Keys.MODEL) else it[Keys.MODEL] = model
     }
+
+    suspend fun setEffort(effort: String?) = context.dataStore.edit {
+        if (effort == null) it.remove(Keys.EFFORT) else it[Keys.EFFORT] = effort
+    }
+
+    suspend fun setWebSearch(enabled: Boolean) = context.dataStore.edit { it[Keys.WEB_SEARCH] = enabled }
 
     suspend fun setHaptics(enabled: Boolean) = context.dataStore.edit { it[Keys.HAPTICS] = enabled }
 }

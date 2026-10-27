@@ -49,4 +49,13 @@
     <string name="thinking_title">Размышления</string>
     <string name="expand">Развернуть</string>
     <string name="collapse">Свернуть</string>
+    <string name="scroll_to_latest">К последнему сообщению</string>
+    <string name="settings_effort">Глубина размышлений</string>
+    <string name="settings_web_search">Поиск в интернете</string>
+    <string name="effort_default">По умолчанию</string>
+    <string name="effort_low">Низкая</string>
+    <string name="effort_medium">Средняя</string>
+    <string name="effort_high">Высокая</string>
+    <string name="effort_xhigh">Очень высокая</string>
+    <string name="effort_max">Максимальная</string>
 </resources>

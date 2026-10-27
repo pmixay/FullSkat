@@ -16,9 +16,10 @@ data class PairResult(
     val serverName: String?,
     val model: String?,
     val models: List<String>,
+    val effort: String?,
 )
 
-data class MeResult(val model: String?, val models: List<String>, val deviceName: String?)
+data class MeResult(val model: String?, val models: List<String>, val effort: String?, val deviceName: String?)
 
 data class ChatMessage(val role: String, val content: String)
 

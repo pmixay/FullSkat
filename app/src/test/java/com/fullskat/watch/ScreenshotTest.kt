@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
@@ -23,6 +24,7 @@ import com.fullskat.watch.ui.PairUiState
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.dialogs.DialogsScreen
 import com.fullskat.watch.ui.pair.PairScreen
+import com.fullskat.watch.ui.settings.EffortScreen
 import com.fullskat.watch.ui.settings.ModelScreen
 import com.fullskat.watch.ui.settings.SettingsScreen
 import com.fullskat.watch.ui.theme.FullSkatTheme
@@ -221,7 +223,7 @@ class ScreenshotTest {
         shot("12_chat_error") { ChatScreen(vm, id, autoListen = false) }
     }
 
-    @Test fun settings() = shot("13_settings") { SettingsScreen(AppViewModel(container), {}, {}, {}) }
+    @Test fun settings() = shot("13_settings") { SettingsScreen(AppViewModel(container), {}, {}, {}, {}) }
 
     @Test fun models() = shot("14_models") { ModelScreen(AppViewModel(container)) {} }
 
@@ -237,5 +239,31 @@ class ScreenshotTest {
         compose.onNodeWithText("Thinking").performClick()
         compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(dir, "16_chat_thinking_expanded.png").path)
+    }
+
+    @Test fun effort() = shot("20_effort") { EffortScreen(AppViewModel(container)) {} }
+
+    @Test fun chat_scrolled_up() {
+        seedLong()
+        shot("21_chat_scrolled_up") { ChatScreen(AppViewModel(container), "long", autoListen = false) }
+        compose.mainClock.autoAdvance = true
+        compose.onRoot().performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage(File(dir, "21_chat_scrolled_up.png").path)
+    }
+
+    private fun seedLong() = runBlocking {
+        val dao = container.db.dialogDao()
+        val now = System.currentTimeMillis()
+        dao.insertDialog(DialogEntity("long", "Длинный диалог", now, now))
+        (0 until 5).forEach { i ->
+            dao.insertMessage(MessageEntity(dialogId = "long", role = Role.USER, content = "Вопрос номер ${i + 1}", createdAt = now - 20_000 + i * 2_000L))
+            dao.insertMessage(
+                MessageEntity(
+                    dialogId = "long", role = Role.ASSISTANT, createdAt = now - 19_000 + i * 2_000L,
+                    content = "Ответ номер ${i + 1}: короткий текст, чтобы список можно было прокручивать вверх и вниз.",
+                ),
+            )
+        }
     }
 }

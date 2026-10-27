@@ -79,7 +79,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             val token = cfg.token ?: return@launch
             try {
                 val me = container.api.me(cfg.serverUrl, token)
-                container.settings.saveServerModels(me.model, me.models)
+                container.settings.saveServerModels(me.model, me.models, me.effort)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // Offline, token or parsing problems surface on the first turn; the cached list stays usable.
@@ -93,7 +93,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 val deviceId = container.settings.deviceId()
                 val r = container.api.pair(passcode, deviceId, deviceName)
-                container.settings.savePairing(r.token, r.serverName, r.model, r.models)
+                container.settings.savePairing(r.token, r.serverName, r.model, r.models, r.effort)
                 _pairState.value = PairUiState.Success(r.firstSetup)
             } catch (e: ApiException) {
                 _pairState.value = when (e) {
@@ -119,6 +119,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.settings.setModel(model) }
     }
 
+    fun setEffort(effort: String?) {
+        viewModelScope.launch { container.settings.setEffort(effort) }
+    }
+
+    fun setWebSearch(enabled: Boolean) {
+        viewModelScope.launch { container.settings.setWebSearch(enabled) }
+    }
+
     fun setHaptics(enabled: Boolean) {
         viewModelScope.launch { container.settings.setHaptics(enabled) }
     }
@@ -137,5 +145,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             "claude-fable-5-1",
         )
         const val DEFAULT_MODEL = "claude-haiku-5-5"
+
+        /** Reasoning effort levels the server accepts, lowest first. */
+        val EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
     }
 }
