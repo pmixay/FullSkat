@@ -11,9 +11,27 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.transformWhile
 import kotlin.math.sqrt
 
 class AudioFrame(val pcm: ByteArray, val rms: Float)
+
+/**
+ * PCM of the frames up to the detector's verdict, or until [stopRequested] turns true, then completes.
+ * A single collection feeds both [onFrame] (level meter) and the recognizer, so the microphone is
+ * released the moment this flow ends. Do not fan the capture out with shareIn(WhileSubscribed): its
+ * sharing coroutine never completes and would keep the surrounding coroutineScope alive forever.
+ */
+fun Flow<AudioFrame>.untilEndpoint(
+    detector: EndpointDetector,
+    stopRequested: () -> Boolean,
+    onFrame: (AudioFrame) -> Unit = {},
+): Flow<ByteArray> = transformWhile { f ->
+    val verdict = detector.feed(f.rms)
+    onFrame(f)
+    emit(f.pcm)
+    verdict == EndpointDetector.Verdict.CONTINUE && !stopRequested()
+}
 
 /**
  * 16 kHz mono PCM16 capture in 100 ms frames. The microphone is opened only while the

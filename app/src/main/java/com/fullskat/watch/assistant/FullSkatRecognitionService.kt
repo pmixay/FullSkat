@@ -7,6 +7,7 @@ import android.speech.SpeechRecognizer
 import android.util.Log
 import com.fullskat.watch.FullSkatApp
 import com.fullskat.watch.audio.EndpointDetector
+import com.fullskat.watch.audio.untilEndpoint
 import com.fullskat.watch.speech.ListenEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,11 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.shareIn
-import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
 
 /**
@@ -41,25 +38,17 @@ class FullSkatRecognitionService : RecognitionService() {
             try {
                 coroutineScope {
                     val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@FullSkatRecognitionService.stopSignal = it }
-                    val frames = container.audioCapture.frames().shareIn(this, SharingStarted.WhileSubscribed(), replay = 0)
                     val detector = EndpointDetector()
-                    val detectorJob = launch {
-                        var announced = false
-                        frames
-                            .takeWhile { f ->
-                                listener.rmsChanged(f.rms * 40f)
-                                val verdict = detector.feed(f.rms)
-                                if (!announced && detector.speaking) {
-                                    announced = true
-                                    listener.beginningOfSpeech()
-                                }
-                                verdict == EndpointDetector.Verdict.CONTINUE && stopSignal.replayCache.isEmpty()
-                            }
-                            .collect()
-                        stopSignal.tryEmit(Unit)
+                    var announced = false
+                    val pcm = container.audioCapture.frames().untilEndpoint(detector, stopRequested = { stopSignal.replayCache.isNotEmpty() }) { f ->
+                        listener.rmsChanged(f.rms * 40f)
+                        if (!announced && detector.speaking) {
+                            announced = true
+                            listener.beginningOfSpeech()
+                        }
                     }
                     var delivered = false
-                    container.speech.listen(frames.map { it.pcm }, stopSignal).collect { ev ->
+                    container.speech.listen(pcm, stopSignal).collect { ev ->
                         when (ev) {
                             ListenEvent.Ready -> listener.readyForSpeech(Bundle())
                             is ListenEvent.Partial -> {
@@ -78,7 +67,6 @@ class FullSkatRecognitionService : RecognitionService() {
                             }
                         }
                     }
-                    detectorJob.cancel()
                     if (!delivered) listener.error(SpeechRecognizer.ERROR_CLIENT)
                 }
             } catch (e: IllegalStateException) {

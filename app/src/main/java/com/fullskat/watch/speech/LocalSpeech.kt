@@ -24,9 +24,10 @@ import kotlinx.coroutines.withContext
  */
 class LocalSpeech(private val context: Context) {
     private val lock = Any()
-    private var recognizer: OnlineRecognizer? = null
+    @Volatile private var recognizer: OnlineRecognizer? = null
 
-    val loaded: Boolean get() = synchronized(lock) { recognizer != null }
+    /** Lock-free: callers on the main thread must not wait for a model load that is still in progress. */
+    val loaded: Boolean get() = recognizer != null
 
     /** Loads the model (about a second) so the first utterance starts without delay. */
     suspend fun warmUp() {
