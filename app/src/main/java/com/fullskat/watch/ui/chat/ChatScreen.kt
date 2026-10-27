@@ -122,7 +122,7 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
     }
 
     ScreenScaffold(scrollState = listState) { contentPadding ->
-        val bottomInset = 50.dp // room for the floating mic button
+        val bottomInset = 36.dp // room for the half-circle button on the bottom edge
         val padding = PaddingValues(
             top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding() + bottomInset,
@@ -159,21 +159,21 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
             }
         }
 
-        // Floating round mic: small, so it stays out of the way of the text; 14 dp above the bottom of the round display.
-        Box(Modifier.fillMaxSize().padding(bottom = 14.dp), contentAlignment = Alignment.BottomCenter) {
+        // Half-circle button bounded to the bottom edge of the round display (its flat side is the screen's lowest point).
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
             when (turn) {
                 is TurnState.Listening, TurnState.Transcribing -> Unit
-                TurnState.Thinking -> CircularProgressIndicator(modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
-                is TurnState.Answering -> FilledIconButton(
+                TurnState.Thinking -> CircularProgressIndicator(modifier = Modifier.padding(bottom = 4.dp).size(26.dp), strokeWidth = 3.dp)
+                is TurnState.Answering -> BottomHalfButton(
                     onClick = { vm.cancelTurn() },
-                    modifier = Modifier.size(32.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Tokens.surfaceHigh, contentColor = Tokens.accent),
-                ) {
-                    Icon(painterResource(R.drawable.ic_stop), contentDescription = stringResource(R.string.stop), modifier = Modifier.size(15.dp))
-                }
-                else -> FilledIconButton(onClick = startListening, modifier = Modifier.size(32.dp)) {
-                    Icon(painterResource(R.drawable.ic_mic), contentDescription = stringResource(R.string.mic), modifier = Modifier.size(18.dp))
-                }
+                    container = Tokens.surfaceHigh,
+                    content = { Icon(painterResource(R.drawable.ic_stop), contentDescription = stringResource(R.string.stop), tint = Tokens.accent, modifier = Modifier.size(15.dp)) },
+                )
+                else -> BottomHalfButton(
+                    onClick = startListening,
+                    container = Tokens.accent,
+                    content = { Icon(painterResource(R.drawable.ic_mic), contentDescription = stringResource(R.string.mic), tint = Tokens.onAccent, modifier = Modifier.size(18.dp)) },
+                )
             }
         }
         // Jump to the newest message: bottom right, on the circle 42 degrees from the bottom, only after scrolling up.
@@ -196,7 +196,7 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
         val failed = turn as? TurnState.Failed
         if (failed != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                ErrorChip(errorText(failed.kind), Modifier.padding(bottom = 50.dp).clickable { vm.dismissError() })
+                ErrorChip(errorText(failed.kind), Modifier.padding(bottom = 36.dp).clickable { vm.dismissError() })
             }
         }
         val listening = turn as? TurnState.Listening
@@ -211,6 +211,21 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
     }
 }
 
+/** A half circle (56 x 28 dp) whose flat edge rests on the bottom of the display. */
+@Composable
+private fun BottomHalfButton(onClick: () -> Unit, container: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .size(width = 56.dp, height = 28.dp)
+            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+            .background(container)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(Modifier.padding(top = 5.dp)) { content() }
+    }
+}
+
 @Composable
 private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
     val isUser = m.role == Role.USER
@@ -219,7 +234,7 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
     // While the model is still reasoning there is no answer yet: the thinking header replaces the "…" placeholder.
     val showBubble = text.isNotBlank() || (m.pending && !showThinking)
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 3.dp),
+        Modifier.fillMaxWidth().padding(start = if (isUser) 18.dp else 10.dp, end = if (isUser) 18.dp else 6.dp, top = 3.dp, bottom = 3.dp),
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         if (showThinking) ThinkingBlock(thinking = thinking, live = m.pending && text.isBlank())
@@ -231,7 +246,7 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
                 fontSize = 16.sp,
                 lineHeight = 21.sp,
                 modifier = Modifier
-                    .fillMaxWidth(0.86f)
+                    .fillMaxWidth(if (isUser) 0.86f else 1f)
                     .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
                     .background(if (isUser) Tokens.userBubble else Tokens.assistantBubble, shape)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -245,7 +260,7 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
 private fun ThinkingBlock(thinking: String, live: Boolean) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, animationSpec = tween(150), label = "chevron")
-    Column(Modifier.fillMaxWidth(0.86f)) {
+    Column(Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .clip(RoundedCornerShape(12.dp))
