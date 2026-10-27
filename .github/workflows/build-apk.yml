@@ -58,6 +58,20 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
+      # Renders the real screens on the JVM (Robolectric) for review; never blocks the APK.
+      - name: Screenshots
+        if: ${{ startsWith(github.ref, 'refs/heads/claude/') }}
+        continue-on-error: true
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' -Pscreenshots --no-daemon --console=plain
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ always() && startsWith(github.ref, 'refs/heads/claude/') }}
+        with:
+          name: fullskat-screenshots
+          path: app/build/screenshots
+          if-no-files-found: warn
+          retention-days: 3
+
       - name: Build
         env:
           FULLSKAT_KEYSTORE_PASSWORD: ${{ secrets.FULLSKAT_KEYSTORE_PASSWORD }}
