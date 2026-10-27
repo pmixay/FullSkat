@@ -6,3 +6,5 @@
 -dontwarn org.bouncycastle.**
 -dontwarn org.conscrypt.**
 -dontwarn org.openjsse.**
+# sherpa-onnx: the JNI layer reads Kotlin config classes by field name and calls native methods by name.
+-keep class com.k2fsa.sherpa.onnx.** { *; }

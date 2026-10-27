@@ -56,6 +56,9 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "FULLSKAT_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+
       - name: Build
         env:
           FULLSKAT_KEYSTORE_PASSWORD: ${{ secrets.FULLSKAT_KEYSTORE_PASSWORD }}

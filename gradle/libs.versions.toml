@@ -19,6 +19,7 @@ coroutines = "1.11.0"
 concurrentFutures = "1.3.0"
 splashscreen = "1.2.0"
 junit = "4.13.2"
+sherpaOnnx = "2.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

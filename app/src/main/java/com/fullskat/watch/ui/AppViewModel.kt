@@ -9,7 +9,6 @@ import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.net.ApiException
 import com.fullskat.watch.data.prefs.Settings
 import com.fullskat.watch.data.prefs.SettingsRepository
-import com.fullskat.watch.data.prefs.SpeechLang
 import com.fullskat.watch.domain.AssistantTurn
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.tile.FullSkatTileService
@@ -70,6 +69,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         refreshServerInfo()
+        viewModelScope.launch { container.speech.warmUp() }
     }
 
     /** Learns the server's current default model and allowlist (they depend on the provider it runs). */
@@ -117,10 +117,6 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setModel(model: String?) {
         viewModelScope.launch { container.settings.setModel(model) }
-    }
-
-    fun setLang(lang: SpeechLang) {
-        viewModelScope.launch { container.settings.setLang(lang) }
     }
 
     fun setHaptics(enabled: Boolean) {

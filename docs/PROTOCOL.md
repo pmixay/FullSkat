@@ -1,8 +1,9 @@
 # FullSkat client–server protocol
 
 The watch app (client) talks to a small server that holds the provider keys
-(Claude API or OpenRouter), recognizes speech, and forwards chat requests. The server stores nothing about
-dialogs; dialogs live on the watch.
+(Claude API or OpenRouter) and forwards chat requests. The server stores nothing about
+dialogs; dialogs live on the watch. Speech recognition runs on the watch; no audio is
+ever sent to the server.
 
 Base URL: the app is built for a single fixed server, `https://skat.arbuz.lol`; the user
 cannot change it. (Self-hosting means changing `ServerEndpoint.URL` in the app.)
@@ -36,8 +37,7 @@ status. Rate-limit rejections use status `429` and a `Retry-After` header
 * Re-pairing the same `device_id` replaces its previous token.
 
 `GET /v1/me` → `200 {"device_id": "...", "device_name": "...", "model": "...",
-"models": ["..."], "limits": {"chat_per_min": 20, "listen_per_min": 40, "chat_per_day": 500,
-"listen_per_day": 1000}}`. Returns `401 {"error": "invalid_token"}` when the
+"models": ["..."], "limits": {"chat_per_min": 20, "chat_per_day": 500}}`. Returns `401 {"error": "invalid_token"}` when the
 token was revoked (state file reset).
 
 `GET /healthz` → `200 {"ok": true, "paired": true|false}` (no auth).
@@ -75,56 +75,3 @@ token was revoked (state file reset).
     "usage": {"prompt_tokens": n, "completion_tokens": n}}`
   * `event: error`  `data: {"error": "<code>", "message": "..."}`
 * Limits per token: 20/min, 500/day (`429`). Request body max 64 KiB.
-
-## Listening (WebSocket, one utterance per connection)
-
-`GET /v1/listen` (upgrade) with header `Authorization: Bearer <token>`
-(a `?token=` query parameter is also accepted for clients that cannot set
-headers).
-
-Client → server:
-
-1. First frame, text: `{"type": "start", "sample_rate": 16000, "encoding":
-   "pcm_s16le", "channels": 1, "lang": "auto" | "ru" | "en"}`
-2. Then binary frames: raw PCM 16-bit little-endian mono, 16 kHz, ~100 ms
-   each (3200 bytes). The server accepts up to 60 s of audio (`MAX_UTTERANCE_S`).
-3. Optional text frame `{"type": "stop"}` when the user taps or the client's
-   VAD decides the utterance ended. The server then produces the final
-   transcript.
-
-Server → client (text frames, JSON):
-
-* `{"type": "ready"}` right after `start` is accepted.
-* `{"type": "partial", "text": "..."}` roughly every `PARTIAL_INTERVAL_MS`
-  (default 1000) while speech continues. The text is the transcript of the
-  whole utterance so far (not a diff).
-* `{"type": "speech", "active": true|false}` when server-side VAD flips.
-* `{"type": "final", "text": "...", "lang": "ru"}` once, then the server
-  closes with code 1000. `text` may be empty if nothing was recognized.
-* `{"type": "error", "error": "<code>", "message": "..."}` then close 1008/1011.
-
-End of utterance is decided by whichever comes first: client `stop`, server
-VAD silence for `SILENCE_MS` (default 5000 ms) after speech was detected,
-`NO_SPEECH_TIMEOUT_S` (default 30) without any speech, or the 60 s cap. The watch itself gives up after 30 s if nothing was heard and no
-text arrived, and sends `stop` 5 s after the last speech once text exists.
-
-Limits per token: 40 sessions/min, 1000/day (`429` on the upgrade, or
-`error` frame `rate_limited`).
-
-## Speech backends (server config)
-
-`STT_BACKEND`:
-
-* `openrouter` (default): sends WAV to an audio-capable chat model on
-  OpenRouter with the same key (`STT_OPENROUTER_MODEL`, default
-  `google/gemini-3.5-flash-lite`) and asks for a verbatim transcript.
-  No extra setup, good Russian and English.
-* `faster_whisper`: local `faster-whisper` (`WHISPER_MODEL`, default
-  `large-v3-turbo`; `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`). Best latency
-  on a GPU box; optional dependency.
-* `openai`: any OpenAI-compatible `/audio/transcriptions` endpoint
-  (`STT_OPENAI_BASE_URL`, `STT_OPENAI_API_KEY`, `STT_OPENAI_MODEL`), e.g.
-  Groq `whisper-large-v3-turbo` or OpenAI `gpt-4o-transcribe`.
-
-All backends expose the same call: transcribe(pcm16 bytes, sample rate,
-language hint, previous partial text) → (text, detected language).

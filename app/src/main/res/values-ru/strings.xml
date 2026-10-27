@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="complication_short">Спросить</string>
     <string name="tile_title">Спросить FullSkat</string>
     <string name="tile_hint">Нажмите, чтобы спросить</string>
     <plurals name="tile_dialogs_today">
@@ -32,10 +31,6 @@
     <string name="done">Готово</string>
 
     <string name="settings_model">Модель</string>
-    <string name="settings_language">Язык речи</string>
-    <string name="lang_auto">Авто</string>
-    <string name="lang_ru">Русский</string>
-    <string name="lang_en">Английский</string>
     <string name="settings_haptics">Вибрация</string>
     <string name="settings_assistant">Сделать ассистентом</string>
     <string name="settings_assistant_desc">Откроет системные настройки. Выберите FullSkat как приложение цифрового ассистента.</string>
@@ -49,5 +44,6 @@
     <string name="err_token">Сессия истекла. Подключитесь заново в настройках.</string>
     <string name="err_rate">Слишком много запросов. Подождите немного.</string>
     <string name="err_server">Ошибка сервера</string>
+    <string name="err_speech">Не удалось запустить распознавание речи</string>
     <string name="err_nothing_heard">Ничего не услышал</string>
 </resources>

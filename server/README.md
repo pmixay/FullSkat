@@ -1,7 +1,7 @@
 # FullSkat server
 
-The server half of FullSkat, a Wear OS voice assistant. The watch sends audio and chat
-requests; the server holds the API keys, recognizes speech and relays chat
+The server half of FullSkat, a Wear OS voice assistant. The watch recognizes speech
+on-device, so the server never receives audio; it holds the API keys and relays chat
 completions to the Claude API (default) or OpenRouter. It stores no dialogs, only a passcode hash and the tokens it has issued.
 The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
@@ -9,21 +9,19 @@ The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 ```sh
 cd server
-cp .env.example .env          # set ANTHROPIC_API_KEY (+ OPENROUTER_API_KEY for the default speech backend)
+cp .env.example .env          # set ANTHROPIC_API_KEY (OPENROUTER_API_KEY only for LLM_PROVIDER=openrouter)
 docker compose up -d --build
 curl http://localhost:8080/healthz   # {"ok": true, "paired": false}
 ```
 
 State lives in the `fullskat-data` volume (`/data/state.json` inside the container).
-For local speech recognition build with `docker compose build --build-arg EXTRAS=whisper`
-and set `STT_BACKEND=faster_whisper`.
 
 ## Quick start with a virtualenv
 
 ```sh
 cd server
 python3 -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"              # add ",whisper" for faster-whisper
+pip install -e ".[dev]"
 cp .env.example .env                 # edit; .env is read from the working directory
 python -m fullskat_server            # HOST/PORT default to 0.0.0.0:8080
 pytest -q                            # run the test suite
@@ -51,7 +49,7 @@ passcodes lock the IP for 15 minutes.
 ## Putting it behind HTTPS
 
 The watch should talk to the server over HTTPS. Any reverse proxy works; Caddy gets a
-certificate automatically and proxies WebSockets without extra configuration:
+certificate automatically and streams SSE without extra configuration:
 
 ```
 assistant.example.com {
@@ -63,21 +61,8 @@ When a proxy sits in front, set `TRUST_PROXY_HEADERS=true` so pairing limits use
 real client IP from `X-Forwarded-For`. Leave it `false` when the server is reached
 directly, otherwise clients could spoof their IP.
 
-With nginx, add `proxy_http_version 1.1;`, `proxy_set_header Upgrade $http_upgrade;`,
-`proxy_set_header Connection "upgrade";` and `proxy_buffering off;` (for SSE) to the
+With nginx, add `proxy_http_version 1.1;` and `proxy_buffering off;` (for SSE) to the
 location block.
-
-## Choosing a speech backend (`STT_BACKEND`)
-
-| Backend | Setup | Notes |
-| --- | --- | --- |
-| `openrouter` (default) | none beyond `OPENROUTER_API_KEY` (the Claude API cannot transcribe audio) | Sends WAV to an audio-capable chat model (`STT_OPENROUTER_MODEL`, default `google/gemini-3.5-flash-lite`). Good Russian and English, no local resources. |
-| `openai` | `STT_OPENAI_BASE_URL`, `STT_OPENAI_API_KEY`, `STT_OPENAI_MODEL` | Any OpenAI-compatible `/audio/transcriptions` endpoint: OpenAI `gpt-4o-transcribe`, Groq `whisper-large-v3-turbo`, a self-hosted server, ... |
-| `faster_whisper` | `pip install "fullskat-server[whisper]"` | Local `faster-whisper` (`WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`). Lowest latency on a GPU box; the model downloads on first use. |
-
-Partial transcripts are produced about every `PARTIAL_INTERVAL_MS` while speech is
-detected; the utterance ends on a client `stop`, after `SILENCE_MS` of silence, or at
-`MAX_UTTERANCE_S`.
 
 ## Rate limits
 
@@ -85,10 +70,8 @@ detected; the utterance ends on a client `stop`, after `SILENCE_MS` of silence, 
 | --- | --- | --- |
 | Pairing | client IP | `PAIR_PER_MIN=5`, lock after `PAIR_LOCK_FAILURES=10` for `PAIR_LOCK_MINUTES=15` |
 | Chat | token | `CHAT_PER_MIN=20`, `CHAT_PER_DAY=500` |
-| Listen sessions | token | `LISTEN_PER_MIN=40`, `LISTEN_PER_DAY=1000` |
 
-Rejections are `429` with a `Retry-After` header (or an `error` frame with
-`rate_limited` on the WebSocket). Counters are in memory and reset on restart.
+Rejections are `429` with a `Retry-After` header. Counters are in memory and reset on restart.
 
 ## Chat models
 
@@ -124,12 +107,8 @@ OpenRouter the `web` plugin is used. Set `WEB_SEARCH=false` to turn it off.
   thinking models with a high effort can spend several times more output tokens than
   the visible answer. The default is the cheap Haiku with `medium` effort; web searches
   add a per-search fee and the retrieved pages count as input tokens.
-* The `openrouter` speech backend sends the whole utterance for every partial (about
-  once per second while you speak) plus once for the final: a 10 s utterance costs
-  roughly ten short audio requests. Raise `PARTIAL_INTERVAL_MS` to reduce this, or use
-  `faster_whisper` locally where partials are free.
-* Per-token daily limits (`CHAT_PER_DAY`, `LISTEN_PER_DAY`) are the safety net for a
-  lost or stolen watch; set them to what you are willing to pay for in a day.
+* The per-token daily limit (`CHAT_PER_DAY`) is the safety net for a
+  lost or stolen watch; set it to what you are willing to pay for in a day.
 
 ## Environment variables
 

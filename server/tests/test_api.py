@@ -2,28 +2,13 @@ import json
 from pathlib import Path
 from typing import AsyncIterator
 
-import numpy as np
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from fullskat_server.app import create_app
 from fullskat_server.config import Settings
 from fullskat_server.llm import LLMError, Usage
-from fullskat_server.stt.base import Transcript
-
-
-class FakeSTT:
-    def __init__(self, text: str = "привет мир") -> None:
-        self.text = text
-        self.calls: list[tuple[int, bool]] = []
-
-    async def transcribe(
-        self, pcm16: bytes, sample_rate: int, lang: str | None, prior_text: str | None, *, final: bool = False
-    ) -> Transcript:
-        self.calls.append((len(pcm16), final))
-        return Transcript(text=self.text, lang="ru")
 
 
 class FakeLLM:
@@ -48,7 +33,7 @@ def settings(tmp_path: Path) -> Settings:
 
 @pytest.fixture
 def app(settings: Settings) -> FastAPI:
-    application = create_app(settings=settings, stt=FakeSTT())
+    application = create_app(settings=settings)
     application.state.llm = FakeLLM()
     return application
 
@@ -126,7 +111,7 @@ async def test_pair_rate_limited_on_sixth_attempt(client: AsyncClient) -> None:
 
 async def test_pair_lockout_after_consecutive_failures(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, data_dir=tmp_path, pair_per_min=100, pair_lock_failures=3)
-    app = create_app(settings=settings, stt=FakeSTT())
+    app = create_app(settings=settings)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await pair(client)
         for _ in range(3):
@@ -156,7 +141,7 @@ async def test_me(client: AsyncClient) -> None:
         "device_name": "Galaxy Watch7",
         "model": "claude-haiku-5-5",
         "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"],
-        "limits": {"chat_per_min": 20, "listen_per_min": 40, "chat_per_day": 500, "listen_per_day": 1000},
+        "limits": {"chat_per_min": 20, "chat_per_day": 500},
     }
 
 
@@ -244,7 +229,7 @@ async def test_chat_history_is_trimmed(client: AsyncClient, app: FastAPI) -> Non
 
 async def test_chat_rate_limit(tmp_path: Path) -> None:
     settings = Settings(_env_file=None, data_dir=tmp_path, chat_per_min=2)
-    app = create_app(settings=settings, stt=FakeSTT())
+    app = create_app(settings=settings)
     app.state.llm = FakeLLM()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await pair(client)
@@ -256,88 +241,3 @@ async def test_chat_rate_limit(tmp_path: Path) -> None:
         assert limited.status_code == 429
         assert limited.json()["error"] == "rate_limited"
         assert "retry-after" in limited.headers
-
-
-# ---- /v1/listen -----------------------------------------------------------
-
-
-def loud_frame(ms: int = 100, sample_rate: int = 16000) -> bytes:
-    t = np.arange(sample_rate * ms // 1000) / sample_rate
-    return (np.sin(2 * np.pi * 440 * t) * 9000).astype(np.int16).tobytes()
-
-
-def drain(ws) -> tuple[list[dict], int | None]:
-    """Read text frames until the server closes; return (frames, close code)."""
-    frames: list[dict] = []
-    while True:
-        message = ws.receive()
-        if message["type"] == "websocket.close":
-            return frames, message.get("code")
-        if message.get("text") is not None:
-            frames.append(json.loads(message["text"]))
-
-
-def test_listen_flow_with_fake_stt(app: FastAPI) -> None:
-    with TestClient(app) as tc:
-        token = tc.post("/v1/pair", json=PAIR).json()["token"]
-        with tc.websocket_connect(f"/v1/listen?token={token}") as ws:
-            ws.send_text(json.dumps({"type": "start", "sample_rate": 16000, "encoding": "pcm_s16le", "channels": 1, "lang": "auto"}))
-            assert ws.receive_json() == {"type": "ready"}
-            for _ in range(5):
-                ws.send_bytes(loud_frame())
-            ws.send_text(json.dumps({"type": "stop"}))
-            frames, code = drain(ws)
-
-    kinds = [frame["type"] for frame in frames]
-    assert kinds.count("final") == 1
-    assert {"type": "speech", "active": True} in frames
-    final = next(frame for frame in frames if frame["type"] == "final")
-    assert final == {"type": "final", "text": "привет мир", "lang": "ru"}
-    assert kinds[-1] == "final"
-    assert code == 1000
-    stt: FakeSTT = app.state.stt
-    assert stt.calls[-1] == (5 * 3200, True)
-
-
-def test_listen_header_auth_and_short_audio(app: FastAPI) -> None:
-    with TestClient(app) as tc:
-        token = tc.post("/v1/pair", json=PAIR).json()["token"]
-        with tc.websocket_connect("/v1/listen", headers={"Authorization": f"Bearer {token}"}) as ws:
-            ws.send_text(json.dumps({"type": "start", "sample_rate": 16000}))
-            assert ws.receive_json() == {"type": "ready"}
-            ws.send_bytes(loud_frame(100))
-            ws.send_text(json.dumps({"type": "stop"}))
-            frames, code = drain(ws)
-    assert frames[-1] == {"type": "final", "text": "", "lang": None}
-    assert code == 1000
-    assert app.state.stt.calls == []
-
-
-def test_listen_rejects_bad_token_and_bad_start(app: FastAPI) -> None:
-    with TestClient(app) as tc:
-        with tc.websocket_connect("/v1/listen?token=bogus") as ws:
-            frames, code = drain(ws)
-        assert frames == [{"type": "error", "error": "invalid_token", "message": "token is unknown or was revoked"}]
-        assert code == 1008
-
-        token = tc.post("/v1/pair", json=PAIR).json()["token"]
-        with tc.websocket_connect(f"/v1/listen?token={token}") as ws:
-            ws.send_text(json.dumps({"type": "start", "encoding": "mp3"}))
-            frames, code = drain(ws)
-        assert frames[0]["type"] == "error"
-        assert frames[0]["error"] == "bad_start"
-        assert code == 1008
-
-
-def test_listen_rate_limited(tmp_path: Path) -> None:
-    settings = Settings(_env_file=None, data_dir=tmp_path, listen_per_min=1)
-    app = create_app(settings=settings, stt=FakeSTT())
-    with TestClient(app) as tc:
-        token = tc.post("/v1/pair", json=PAIR).json()["token"]
-        with tc.websocket_connect(f"/v1/listen?token={token}") as ws:
-            ws.send_text(json.dumps({"type": "stop"}))
-            drain(ws)
-        with tc.websocket_connect(f"/v1/listen?token={token}") as ws:
-            frames, code = drain(ws)
-    assert frames[0]["error"] == "rate_limited"
-    assert code == 1008

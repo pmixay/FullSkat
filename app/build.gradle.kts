@@ -1,9 +1,46 @@
+import java.security.MessageDigest
 import java.util.Properties
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+}
+
+// On-device Russian speech recognition: sherpa-onnx runtime (AAR, see settings.gradle.kts) plus the
+// streaming Zipformer "small-ru-vosk" model (int8, ~23 MB). The model is downloaded at build time,
+// verified and packed into the APK assets (asr/ru/), so it is not kept in git.
+val asrModelUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-ru-vosk-int8-2025-08-16.tar.bz2"
+val asrModelSha256 = "6ba68a01ff3c5445aaf2d61e9b97b026f1149dcc9049d11af3f44f55176341d8"
+val asrModelFiles = listOf("encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt")
+
+abstract class FetchAsrModel : DefaultTask() {
+    @get:Input abstract val url: Property<String>
+    @get:Input abstract val sha256: Property<String>
+    @get:Input abstract val files: ListProperty<String>
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Inject abstract val archives: ArchiveOperations
+    @get:Inject abstract val fileSystem: FileSystemOperations
+
+    @TaskAction
+    fun fetch() {
+        val archive = temporaryDir.resolve("model.tar.bz2")
+        fun digest() = MessageDigest.getInstance("SHA-256").digest(archive.readBytes()).joinToString("") { "%02x".format(it) }
+        if (!archive.exists() || digest() != sha256.get()) {
+            java.net.URI(url.get()).toURL().openStream().use { input -> archive.outputStream().use { input.copyTo(it) } }
+            check(digest() == sha256.get()) { "Checksum mismatch for ${url.get()}" }
+        }
+        val wanted = files.get()
+        fileSystem.copy {
+            from(archives.tarTree(archives.bzip2(archive))) {
+                include(wanted.map { "*/$it" })
+                eachFile { path = name }
+            }
+            includeEmptyDirs = false
+            into(outputDir.get().asFile.resolve("asr/ru"))
+        }
+    }
 }
 
 // Release signing: uses a keystore from environment variables (CI secrets) when present,
@@ -21,6 +58,8 @@ android {
         versionCode = (System.getenv("FULLSKAT_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("FULLSKAT_VERSION_NAME") ?: "1.0.0"
         vectorDrawables.useSupportLibrary = true
+        // Wear OS watches are arm; skipping x86 drops ~30 MB of native libraries.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -59,10 +98,24 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "ru")
+        // The ONNX model is memory-mapped/read as is; compressing it only slows loading down.
+        noCompress += "onnx"
     }
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
+    }
+}
+
+val fetchAsrModel = tasks.register<FetchAsrModel>("fetchAsrModel") {
+    url.set(asrModelUrl)
+    sha256.set(asrModelSha256)
+    files.set(asrModelFiles)
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(fetchAsrModel, FetchAsrModel::outputDir)
     }
 }
 
@@ -101,6 +154,7 @@ dependencies {
     ksp(libs.room.compiler)
     implementation(libs.datastore.preferences)
     implementation(libs.okhttp)
+    implementation("com.k2fsa.sherpa:sherpa-onnx-static-link-onnxruntime:${libs.versions.sherpaOnnx.get()}@aar")
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.concurrent.futures)
     debugImplementation(libs.compose.ui.tooling)

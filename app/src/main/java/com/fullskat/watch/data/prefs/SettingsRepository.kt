@@ -16,8 +16,6 @@ import java.util.UUID
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-enum class SpeechLang(val wire: String) { AUTO("auto"), RU("ru"), EN("en") }
-
 data class Settings(
     val serverUrl: String,
     val token: String?,
@@ -26,7 +24,6 @@ data class Settings(
     val serverModel: String?,
     val serverModels: List<String>,
     val serverName: String?,
-    val lang: SpeechLang,
     val haptics: Boolean,
 ) {
     val paired: Boolean get() = !token.isNullOrBlank()
@@ -41,7 +38,6 @@ class SettingsRepository(private val context: Context) {
         val SERVER_MODEL = stringPreferencesKey("server_model")
         val SERVER_MODELS = stringPreferencesKey("server_models")
         val SERVER_NAME = stringPreferencesKey("server_name")
-        val LANG = stringPreferencesKey("lang")
         val HAPTICS = booleanPreferencesKey("haptics")
     }
 
@@ -55,7 +51,6 @@ class SettingsRepository(private val context: Context) {
             serverModel = p[Keys.SERVER_MODEL],
             serverModels = p[Keys.SERVER_MODELS]?.lines()?.filter { it.isNotBlank() }.orEmpty(),
             serverName = p[Keys.SERVER_NAME],
-            lang = p[Keys.LANG]?.let { v -> SpeechLang.entries.firstOrNull { it.wire == v } } ?: SpeechLang.AUTO,
             haptics = p[Keys.HAPTICS] ?: true,
         )
     }
@@ -104,8 +99,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setModel(model: String?) = context.dataStore.edit {
         if (model == null) it.remove(Keys.MODEL) else it[Keys.MODEL] = model
     }
-
-    suspend fun setLang(lang: SpeechLang) = context.dataStore.edit { it[Keys.LANG] = lang.wire }
 
     suspend fun setHaptics(enabled: Boolean) = context.dataStore.edit { it[Keys.HAPTICS] = enabled }
 }

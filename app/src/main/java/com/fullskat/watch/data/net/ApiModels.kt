@@ -27,11 +27,3 @@ sealed interface ChatEvent {
     data class Done(val text: String, val model: String?) : ChatEvent
     data class Error(val code: String, val message: String) : ChatEvent
 }
-
-sealed interface ListenEvent {
-    data object Ready : ListenEvent
-    data class Partial(val text: String) : ListenEvent
-    data class Speech(val active: Boolean) : ListenEvent
-    data class Final(val text: String, val lang: String?) : ListenEvent
-    data class Error(val code: String, val message: String) : ListenEvent
-}

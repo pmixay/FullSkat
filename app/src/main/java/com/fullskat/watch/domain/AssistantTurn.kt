@@ -14,9 +14,9 @@ import com.fullskat.watch.data.net.ApiClient
 import com.fullskat.watch.data.net.ApiException
 import com.fullskat.watch.data.net.ChatEvent
 import com.fullskat.watch.data.net.ChatMessage
-import com.fullskat.watch.data.net.ListenClient
-import com.fullskat.watch.data.net.ListenEvent
 import com.fullskat.watch.data.prefs.SettingsRepository
+import com.fullskat.watch.speech.ListenEvent
+import com.fullskat.watch.speech.LocalSpeech
 import com.fullskat.watch.tile.FullSkatTileService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
-enum class ErrorKind { NO_CONNECTION, UNAUTHORIZED, RATE_LIMITED, SERVER, NOTHING_HEARD, MIC }
+enum class ErrorKind { NO_CONNECTION, UNAUTHORIZED, RATE_LIMITED, SERVER, NOTHING_HEARD, MIC, SPEECH }
 
 sealed interface TurnState {
     data object Idle : TurnState
@@ -52,7 +52,7 @@ sealed interface TurnState {
 }
 
 /**
- * Runs one assistant turn: capture → stream to server → transcript → chat → persist.
+ * Runs one assistant turn: capture → on-device recognition → transcript → chat → persist.
  * Owned by a ViewModel; all work happens inside the scope passed to [start].
  */
 class AssistantTurn(
@@ -60,7 +60,7 @@ class AssistantTurn(
     private val dao: DialogDao,
     private val settings: SettingsRepository,
     private val api: ApiClient,
-    private val listenClient: ListenClient,
+    private val speech: LocalSpeech,
     private val audio: AudioCapture,
 ) {
     private val _state = MutableStateFlow<TurnState>(TurnState.Idle)
@@ -106,9 +106,10 @@ class AssistantTurn(
             return
         }
         val transcript = try {
-            listen(cfg.serverUrl, token, cfg.lang.wire)
-        } catch (e: ApiException) {
-            _state.value = TurnState.Failed(e.kind(), e.message)
+            listen()
+        } catch (e: SpeechEngineException) {
+            Log.e(TAG, "speech engine", e)
+            _state.value = TurnState.Failed(ErrorKind.SPEECH, e.message)
             return
         } catch (e: IllegalStateException) {
             Log.e(TAG, "microphone", e)
@@ -133,13 +134,18 @@ class AssistantTurn(
         FullSkatTileService.requestUpdate(context)
     }
 
-    private suspend fun listen(serverUrl: String, token: String, lang: String): String = kotlinx.coroutines.coroutineScope {
+    private suspend fun listen(): String = kotlinx.coroutines.coroutineScope {
+        // Microphone frames are not replayed, so the model has to be ready before the microphone opens.
+        if (!speech.loaded) {
+            _state.value = TurnState.Transcribing
+            speech.warmUp()
+        }
         _state.value = TurnState.Listening("", 0f, false)
         val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@AssistantTurn.stopSignal = it }
         val frames = audio.frames().shareIn(this, SharingStarted.WhileSubscribed(), replay = 0)
         val detector = EndpointDetector()
         // Level meter + endpoint detection. Ends (and releases the microphone) as soon as the
-        // detector decides or the user taps, without waiting for the server's final transcript.
+        // detector decides or the user taps, without waiting for the recognizer's final transcript.
         val detectorJob = launch {
             frames
                 .takeWhile { f ->
@@ -152,14 +158,13 @@ class AssistantTurn(
         var finalText: String? = null
         var error: ListenEvent.Error? = null
         var hapticsOn = settings.current().haptics
-        listenClient.listen(serverUrl, token, lang, frames.map { it.pcm }, stopSignal).collect { ev ->
+        speech.listen(frames.map { it.pcm }, stopSignal).collect { ev ->
             when (ev) {
                 ListenEvent.Ready -> haptic(hapticsOn, 12)
                 is ListenEvent.Partial -> {
                     if (ev.text.isNotBlank()) detector.markTextReceived()
                     _state.update { s -> if (s is TurnState.Listening) s.copy(partial = ev.text) else s }
                 }
-                is ListenEvent.Speech -> Unit
                 is ListenEvent.Final -> {
                     finalText = ev.text
                     _state.value = TurnState.Transcribing
@@ -169,14 +174,7 @@ class AssistantTurn(
         }
         detectorJob.cancel()
         this@AssistantTurn.stopSignal = null
-        error?.let { e ->
-            throw when (e.code) {
-                "unauthorized", "invalid_token" -> ApiException.Unauthorized(e.message)
-                "rate_limited" -> ApiException.RateLimited(30)
-                "network", "closed" -> ApiException.Network(e.message)
-                else -> ApiException.Server(500, e.message)
-            }
-        }
+        error?.let { throw SpeechEngineException(it.message) }
         finalText.orEmpty().trim()
     }
 
@@ -243,6 +241,8 @@ class AssistantTurn(
         is ApiException.RateLimited, is ApiException.Locked -> ErrorKind.RATE_LIMITED
         is ApiException.Server -> ErrorKind.SERVER
     }
+
+    private class SpeechEngineException(message: String) : Exception(message)
 
     private companion object {
         const val TAG = "AssistantTurn"

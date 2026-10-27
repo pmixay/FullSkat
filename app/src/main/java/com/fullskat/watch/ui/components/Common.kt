@@ -25,6 +25,7 @@ fun errorText(kind: ErrorKind): String = when (kind) {
     ErrorKind.SERVER -> androidx.compose.ui.res.stringResource(R.string.err_server)
     ErrorKind.NOTHING_HEARD -> androidx.compose.ui.res.stringResource(R.string.err_nothing_heard)
     ErrorKind.MIC -> androidx.compose.ui.res.stringResource(R.string.err_no_mic)
+    ErrorKind.SPEECH -> androidx.compose.ui.res.stringResource(R.string.err_speech)
 }
 
 @Composable

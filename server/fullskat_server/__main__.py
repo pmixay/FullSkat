@@ -26,7 +26,6 @@ def main() -> None:
         log_level=settings.log_level.lower(),
         proxy_headers=settings.trust_proxy_headers,
         forwarded_allow_ips="*" if settings.trust_proxy_headers else None,
-        ws_max_size=256 * 1024,
     )
 
 

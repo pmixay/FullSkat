@@ -33,7 +33,6 @@ import com.fullskat.watch.BuildConfig
 import com.fullskat.watch.R
 import com.fullskat.watch.assistant.FullSkatVoiceInteractionService
 import com.fullskat.watch.data.net.ServerEndpoint
-import com.fullskat.watch.data.prefs.SpeechLang
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.theme.Tokens
 
@@ -57,19 +56,6 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_model)) },
                     secondaryLabel = { Text(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                )
-            }
-            item {
-                val next = when (cfg.lang) {
-                    SpeechLang.AUTO -> SpeechLang.RU
-                    SpeechLang.RU -> SpeechLang.EN
-                    SpeechLang.EN -> SpeechLang.AUTO
-                }
-                FilledTonalButton(
-                    onClick = { vm.setLang(next) },
-                    modifier = itemModifier,
-                    label = { Text(stringResource(R.string.settings_language)) },
-                    secondaryLabel = { Text(langLabel(cfg.lang)) },
                 )
             }
             item {
@@ -137,13 +123,6 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
         },
         dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirmUnpair = false }) },
     )
-}
-
-@Composable
-private fun langLabel(lang: SpeechLang): String = when (lang) {
-    SpeechLang.AUTO -> stringResource(R.string.lang_auto)
-    SpeechLang.RU -> stringResource(R.string.lang_ru)
-    SpeechLang.EN -> stringResource(R.string.lang_en)
 }
 
 @Composable

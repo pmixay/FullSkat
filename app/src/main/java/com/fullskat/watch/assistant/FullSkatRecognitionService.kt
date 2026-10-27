@@ -3,13 +3,11 @@ package com.fullskat.watch.assistant
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognitionService
-import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 import com.fullskat.watch.FullSkatApp
 import com.fullskat.watch.audio.EndpointDetector
-import com.fullskat.watch.data.net.ListenEvent
-import com.fullskat.watch.data.prefs.SpeechLang
+import com.fullskat.watch.speech.ListenEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,9 +24,9 @@ import kotlinx.coroutines.launch
 
 /**
  * A RecognitionService is required for an app to be selectable as the digital assistant.
- * This one is real: it streams audio to the FullSkat server and reports partial and final
- * results through the standard SpeechRecognizer callbacks, so other apps on the watch can
- * use FullSkat's server-side recognition too.
+ * This one is real: it recognises Russian speech on the watch with the same on-device engine
+ * as the app and reports partial and final results through the standard SpeechRecognizer
+ * callbacks, so other apps on the watch can use FullSkat's recognition too.
  */
 class FullSkatRecognitionService : RecognitionService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -39,17 +37,7 @@ class FullSkatRecognitionService : RecognitionService() {
         current?.cancel()
         val container = FullSkatApp.container(this)
         current = scope.launch {
-            val cfg = container.settings.current()
-            val token = cfg.token
-            if (!cfg.paired || token == null) {
-                listener.error(SpeechRecognizer.ERROR_CLIENT)
-                return@launch
-            }
-            val lang = when (recognizerIntent.getStringExtra(RecognizerIntent.EXTRA_LANGUAGE)?.take(2)?.lowercase()) {
-                "ru" -> SpeechLang.RU.wire
-                "en" -> SpeechLang.EN.wire
-                else -> cfg.lang.wire
-            }
+            if (!container.speech.loaded) container.speech.warmUp()
             try {
                 coroutineScope {
                     val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@FullSkatRecognitionService.stopSignal = it }
@@ -71,14 +59,13 @@ class FullSkatRecognitionService : RecognitionService() {
                         stopSignal.tryEmit(Unit)
                     }
                     var delivered = false
-                    container.listenClient.listen(cfg.serverUrl, token, lang, frames.map { it.pcm }, stopSignal).collect { ev ->
+                    container.speech.listen(frames.map { it.pcm }, stopSignal).collect { ev ->
                         when (ev) {
                             ListenEvent.Ready -> listener.readyForSpeech(Bundle())
                             is ListenEvent.Partial -> {
                                 if (ev.text.isNotBlank()) detector.markTextReceived()
                                 listener.partialResults(resultsBundle(ev.text))
                             }
-                            is ListenEvent.Speech -> Unit
                             is ListenEvent.Final -> {
                                 listener.endOfSpeech()
                                 delivered = true
@@ -87,12 +74,12 @@ class FullSkatRecognitionService : RecognitionService() {
                             }
                             is ListenEvent.Error -> {
                                 delivered = true
-                                listener.error(if (ev.code == "network") SpeechRecognizer.ERROR_NETWORK else SpeechRecognizer.ERROR_SERVER)
+                                listener.error(SpeechRecognizer.ERROR_CLIENT)
                             }
                         }
                     }
                     detectorJob.cancel()
-                    if (!delivered) listener.error(SpeechRecognizer.ERROR_NETWORK)
+                    if (!delivered) listener.error(SpeechRecognizer.ERROR_CLIENT)
                 }
             } catch (e: IllegalStateException) {
                 Log.e(TAG, "audio", e)
