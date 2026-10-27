@@ -64,7 +64,7 @@ class EndpointDetector(
         /** Nothing heard and no text yet: give up after this long. */
         const val NO_TEXT_TIMEOUT_MS = 30_000
         /** Text already recognised: end the turn after this much quiet. */
-        const val SILENCE_AFTER_TEXT_MS = 5_000
+        const val SILENCE_AFTER_TEXT_MS = 2_500
         const val MAX_UTTERANCE_MS = 60_000
     }
 }

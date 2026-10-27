@@ -94,7 +94,7 @@ class LocalSpeech(private val context: Context) {
                 tokens = "$dir/tokens.txt",
                 numThreads = THREADS,
             ),
-            // The app's own endpoint detector decides when the user is done (5 s after the last word),
+            // The app's own endpoint detector decides when the user is done (2.5 s after the last word),
             // so the recognizer must not cut the utterance on its shorter pauses.
             enableEndpoint = false,
             // Beam search keeps a few hypotheses alive; it fixes many Russian word-ending errors that

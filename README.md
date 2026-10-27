@@ -33,7 +33,7 @@ dialogs stay there too. A small server you host holds the API keys and relays th
 * Charcoal ground, no animation outside the listening state, no wake locks: the screen is
   kept on only while a turn is running.
 * The microphone opens for the turn only; an on-watch endpoint detector stops streaming
-  5 s after you stop talking once words were recognised, gives up after 30 s of silence
+  2.5 s after you stop talking once words were recognised, gives up after 30 s of silence
   when nothing was heard, and caps a turn at 60 s.
 * One HTTP client with a warm TLS connection is reused for every request; there are no
   background services, polling or push registrations.
