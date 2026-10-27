@@ -8,16 +8,16 @@ from httpx import ASGITransport, AsyncClient
 
 from fullskat_server.app import create_app
 from fullskat_server.config import Settings
-from fullskat_server.llm import LLMError, Usage
+from fullskat_server.llm import LLMError, Thinking, Usage
 
 
 class FakeLLM:
-    def __init__(self, deltas: list[str] | None = None, error: LLMError | None = None) -> None:
-        self.deltas = deltas or ["Hel", "lo", " world"]
+    def __init__(self, deltas: list[str | Thinking] | None = None, error: LLMError | None = None) -> None:
+        self.deltas = deltas or [Thinking("Greeting "), Thinking("the user."), "Hel", "lo", " world"]
         self.error = error
         self.requests: list[tuple[list[dict[str, str]], str]] = []
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Usage]:
+    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
         self.requests.append((messages, model))
         if self.error:
             raise self.error
@@ -140,7 +140,7 @@ async def test_me(client: AsyncClient) -> None:
         "device_id": "dev-1",
         "device_name": "Galaxy Watch7",
         "model": "claude-haiku-5-5",
-        "models": ["claude-haiku-5-5", "claude-sonnet-5-5"],
+        "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"],
         "limits": {"chat_per_min": 20, "chat_per_day": 500},
     }
 
@@ -171,12 +171,14 @@ async def test_chat_streams_deltas_and_done(client: AsyncClient, app: FastAPI) -
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     events = parse_sse(response.text)
-    assert [name for name, _ in events] == ["delta", "delta", "delta", "done"]
-    assert events[0][1] == {"text": "Hel"}
+    assert [name for name, _ in events] == ["thinking", "thinking", "delta", "delta", "delta", "done"]
+    assert events[0][1] == {"text": "Greeting "}
+    assert events[2][1] == {"text": "Hel"}
     assert events[-1][1] == {
         "text": "Hello world",
         "model": "claude-haiku-5-5",
         "usage": {"prompt_tokens": 10, "completion_tokens": 3},
+        "thinking": "Greeting the user.",
     }
 
     (messages, model), = app.state.llm.requests
@@ -185,6 +187,16 @@ async def test_chat_streams_deltas_and_done(client: AsyncClient, app: FastAPI) -
     assert "LaTeX" in messages[0]["content"]
     assert "User locale: ru-RU" in messages[0]["content"]
     assert messages[1:] == [{"role": "user", "content": "Привет"}]
+
+
+async def test_chat_done_has_empty_thinking_without_summary(client: AsyncClient, app: FastAPI) -> None:
+    app.state.llm = FakeLLM(deltas=["Hi"])
+    token = await pair(client)
+    body = {"messages": [{"role": "user", "content": "hi"}]}
+    response = await client.post("/v1/chat", json=body, headers={"Authorization": f"Bearer {token}"})
+    events = parse_sse(response.text)
+    assert [name for name, _ in events] == ["delta", "done"]
+    assert events[-1][1]["thinking"] == ""
 
 
 async def test_chat_model_allowlist_and_errors(client: AsyncClient, app: FastAPI) -> None:

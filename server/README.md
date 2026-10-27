@@ -79,7 +79,7 @@ Rejections are `429` with a `Retry-After` header. Counters are in memory and res
 
 * `anthropic` (default): the Claude API through the official SDK. `ANTHROPIC_MODEL`
   (default `claude-haiku-5-5`) is the default model and the watch may request any model in
-  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5). `ANTHROPIC_EFFORT`
+  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1). `ANTHROPIC_EFFORT`
   (default `medium`) is sent as `output_config.effort`; set it empty to omit it.
   `ANTHROPIC_MAX_TOKENS` caps one answer including thinking tokens.
 * `openrouter`: `OPENROUTER_MODEL` is the default; the watch may request any model listed in
@@ -92,6 +92,14 @@ responses), so the model picker always matches the active provider.
 
 History sent upstream is trimmed to the last `MAX_HISTORY_MESSAGES` /
 `MAX_HISTORY_CHARS`.
+
+### Thinking
+
+`SHOW_THINKING=true` (default) streams the model's reasoning summary to the watch as
+`thinking` events (see `docs/PROTOCOL.md`); the watch shows it collapsed under the answer. With
+the Claude API this sends `thinking: {"type": "adaptive", "display": "summarized"}`; with
+OpenRouter the `reasoning` deltas are forwarded when the model returns them. Set
+`SHOW_THINKING=false` to omit the `thinking` request field and send no summaries.
 
 ### Web search
 

@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .auth import InvalidPasscode, StateStore, TokenRecord, token_hash
 from .config import Settings, load_settings
-from .llm import LLMError, Usage, create_llm, trim_history
+from .llm import LLMError, Thinking, Usage, create_llm, trim_history
 from .prompts import build_system_prompt
 from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
 
@@ -235,11 +235,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         async def events() -> AsyncIterator[str]:
             parts: list[str] = []
+            thinking_parts: list[str] = []
             usage = Usage(prompt_tokens=0, completion_tokens=0)
             try:
                 async for item in app.state.llm.stream(messages, model):
                     if isinstance(item, Usage):
                         usage = item
+                        continue
+                    if isinstance(item, Thinking):
+                        thinking_parts.append(item.text)
+                        yield _sse("thinking", {"text": item.text})
                         continue
                     parts.append(item)
                     yield _sse("delta", {"text": item})
@@ -250,7 +255,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 log.exception("chat stream failed")
                 yield _sse("error", {"error": "internal_error", "message": "chat stream failed"})
                 return
-            yield _sse("done", {"text": "".join(parts), "model": model, "usage": usage.to_json()})
+            done = {
+                "text": "".join(parts),
+                "model": model,
+                "usage": usage.to_json(),
+                "thinking": "".join(thinking_parts),
+            }
+            yield _sse("done", done)
 
         headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
         return StreamingResponse(events(), media_type="text/event-stream", headers=headers)

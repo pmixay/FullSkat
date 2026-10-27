@@ -1,7 +1,6 @@
 package com.fullskat.watch.ui.dialogs
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -10,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -24,8 +22,8 @@ import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.IconButton
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
@@ -49,17 +47,20 @@ fun DialogsScreen(vm: AppViewModel, onOpen: (String) -> Unit, onNew: (String) ->
                 ListHeader { Text(stringResource(R.string.app_name), color = Tokens.accent) }
             }
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(
-                        onClick = { scope.launch { onNew(vm.newDialog()) } },
-                        modifier = Modifier.weight(1f),
-                        icon = { Icon(painterResource(R.drawable.ic_mic), contentDescription = null) },
-                        label = { Text(stringResource(R.string.new_dialog), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
-                    IconButton(onClick = onSettings, modifier = Modifier.padding(start = 6.dp)) {
-                        Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings))
-                    }
-                }
+                Button(
+                    onClick = { scope.launch { onNew(vm.newDialog()) } },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    icon = { Icon(painterResource(R.drawable.ic_mic), contentDescription = null) },
+                    label = { Text(stringResource(R.string.new_dialog), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            item {
+                FilledTonalButton(
+                    onClick = onSettings,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                    icon = { Icon(painterResource(R.drawable.ic_settings), contentDescription = null) },
+                    label = { Text(stringResource(R.string.settings), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
             }
             if (dialogs.isEmpty()) {
                 item {

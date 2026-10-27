@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -95,6 +96,21 @@ class ScreenshotTest {
         "d1"
     }
 
+    private fun seedThinking(): String = runBlocking {
+        val dao = container.db.dialogDao()
+        val now = System.currentTimeMillis()
+        dao.insertDialog(DialogEntity("d4", "Почему небо голубое?", now, now))
+        dao.insertMessage(MessageEntity(dialogId = "d4", role = Role.USER, content = "Почему небо голубое?", createdAt = now - 2_000))
+        dao.insertMessage(
+            MessageEntity(
+                dialogId = "d4", role = Role.ASSISTANT, createdAt = now - 1_000,
+                content = "Из-за рассеяния света: короткие синие волны рассеиваются в атмосфере сильнее красных.",
+                thinking = "Вопрос про рассеяние Рэлея. Нужно ответить коротко, без формул и разметки.",
+            ),
+        )
+        "d4"
+    }
+
     @Test fun pair_empty() = shot("01_pair_empty") { PairScreen(AppViewModel(container)) {} }
 
     @Test fun pair_typing() {
@@ -162,4 +178,17 @@ class ScreenshotTest {
     @Test fun settings() = shot("13_settings") { SettingsScreen(AppViewModel(container), {}, {}, {}) }
 
     @Test fun models() = shot("14_models") { ModelScreen(AppViewModel(container)) {} }
+
+    @Test fun chat_thinking_collapsed() {
+        val id = seedThinking()
+        shot("15_chat_thinking_collapsed") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+    }
+
+    @Test fun chat_thinking_expanded() {
+        val id = seedThinking()
+        shot("16_chat_thinking_expanded") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        compose.onNodeWithContentDescription("Expand").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onRoot().captureRoboImage(File(dir, "16_chat_thinking_expanded.png").path)
+    }
 }

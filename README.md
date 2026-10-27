@@ -24,7 +24,7 @@ dialogs stay there too. A small server you host holds the API keys and relays th
 | Tile | Swipe-left tile with a big amber mic and today's dialog count. |
 | Complication | Round watch-face widget showing only a mic icon (monochromatic or small image) that starts a new dialog. |
 | Pairing | The app is fixed to `https://skat.arbuz.lol` (there is no address field). Enter a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
-| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5. The list comes from the server's allowlist, so it follows the provider the server runs (Claude API by default, or OpenRouter). |
+| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1. The list comes from the server's allowlist, so it follows the provider the server runs (Claude API by default, or OpenRouter). |
 | Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). |
 | Languages | Speech recognition is Russian-only. The assistant answers in the language the text is in. UI is localized in English and Russian. |
 

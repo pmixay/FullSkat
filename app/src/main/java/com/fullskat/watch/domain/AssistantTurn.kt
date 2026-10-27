@@ -45,7 +45,7 @@ sealed interface TurnState {
     data class Listening(val partial: String, val level: Float, val speaking: Boolean) : TurnState
     data object Transcribing : TurnState
     data object Thinking : TurnState
-    data class Answering(val text: String) : TurnState
+    data class Answering(val text: String, val thinking: String = "") : TurnState
     data class Failed(val kind: ErrorKind, val detail: String?) : TurnState
 
     val busy: Boolean get() = this !is Idle && this !is Failed
@@ -186,22 +186,31 @@ class AssistantTurn(
             MessageEntity(dialogId = dialogId, role = Role.ASSISTANT, content = "", createdAt = System.currentTimeMillis(), pending = true)
         )
         val sb = StringBuilder()
+        val tb = StringBuilder() // the model's reasoning summary
         var lastWrite = 0L
+        suspend fun persistThrottled() {
+            val t = System.currentTimeMillis()
+            if (t - lastWrite > 300) {
+                lastWrite = t
+                dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = true)
+            }
+        }
         try {
             api.chat(serverUrl, token, dialogId, history, model, Locale.getDefault().toLanguageTag()).collect { ev ->
                 when (ev) {
+                    is ChatEvent.Thinking -> {
+                        tb.append(ev.text)
+                        _state.value = TurnState.Answering(sb.toString(), tb.toString())
+                        persistThrottled()
+                    }
                     is ChatEvent.Delta -> {
                         sb.append(ev.text)
-                        _state.value = TurnState.Answering(sb.toString())
-                        val t = System.currentTimeMillis()
-                        if (t - lastWrite > 300) {
-                            lastWrite = t
-                            dao.updateMessageContent(msgId, sb.toString(), pending = true)
-                        }
+                        _state.value = TurnState.Answering(sb.toString(), tb.toString())
+                        persistThrottled()
                     }
                     is ChatEvent.Done -> {
                         val text = ev.text.ifBlank { sb.toString() }
-                        dao.updateMessageContent(msgId, text, pending = false)
+                        dao.updateMessageContent(msgId, text, ev.thinking.ifBlank { tb.toString() }, pending = false)
                         dao.touchDialog(dialogId, System.currentTimeMillis())
                         _state.value = TurnState.Idle
                     }
@@ -210,21 +219,21 @@ class AssistantTurn(
             }
             if (_state.value is TurnState.Answering) {
                 // Stream ended without a done event; keep what we have.
-                dao.updateMessageContent(msgId, sb.toString(), pending = false)
+                dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = false)
                 _state.value = TurnState.Idle
             }
         } catch (e: ApiException) {
-            finalizePartial(msgId, sb)
+            finalizePartial(msgId, sb, tb)
             _state.value = TurnState.Failed(e.kind(), e.message)
         } catch (e: CancellationException) {
             // User tapped Stop: keep whatever streamed so far as the answer.
-            withContext(NonCancellable) { finalizePartial(msgId, sb) }
+            withContext(NonCancellable) { finalizePartial(msgId, sb, tb) }
             throw e
         }
     }
 
-    private suspend fun finalizePartial(msgId: Long, sb: StringBuilder) {
-        if (sb.isEmpty()) dao.deleteMessage(msgId) else dao.updateMessageContent(msgId, sb.toString(), pending = false)
+    private suspend fun finalizePartial(msgId: Long, sb: StringBuilder, tb: StringBuilder) {
+        if (sb.isEmpty()) dao.deleteMessage(msgId) else dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = false)
     }
 
     private fun haptic(enabled: Boolean, ms: Long) {

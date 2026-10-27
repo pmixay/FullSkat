@@ -52,8 +52,8 @@ interface DialogDao {
     @Update
     suspend fun updateMessage(message: MessageEntity)
 
-    @Query("UPDATE messages SET content = :content, pending = :pending WHERE id = :id")
-    suspend fun updateMessageContent(id: Long, content: String, pending: Boolean)
+    @Query("UPDATE messages SET content = :content, thinking = :thinking, pending = :pending WHERE id = :id")
+    suspend fun updateMessageContent(id: Long, content: String, thinking: String, pending: Boolean)
 
     @Query("UPDATE dialogs SET title = :title, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateDialog(id: String, title: String, updatedAt: Long)

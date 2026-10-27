@@ -133,6 +133,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         val MODELS = listOf(
             "claude-haiku-5-5",
             "claude-sonnet-5-5",
+            "claude-opus-5-5",
+            "claude-fable-5-1",
         )
         const val DEFAULT_MODEL = "claude-haiku-5-5"
     }

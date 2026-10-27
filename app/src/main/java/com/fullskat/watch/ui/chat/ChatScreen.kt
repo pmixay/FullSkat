@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,9 +24,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -114,7 +121,11 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
             items(messages.size, key = { messages[it].id }) { index ->
                 val m = messages[index]
                 val streaming = m.pending && index == messages.lastIndex && answering != null
-                MessageRow(m, if (streaming) answering.text else m.content)
+                MessageRow(
+                    m,
+                    if (streaming) answering.text else m.content,
+                    if (streaming) answering.thinking else m.thinking,
+                )
             }
             if (turn is TurnState.Thinking) {
                 item {
@@ -164,25 +175,68 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
 }
 
 @Composable
-private fun MessageRow(m: MessageEntity, text: String) {
+private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
     val isUser = m.role == Role.USER
     val shape = if (isUser) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
-    Box(
+    val showThinking = !isUser && thinking.isNotBlank()
+    // While the model is still reasoning there is no answer yet: the thinking header replaces the "…" placeholder.
+    val showBubble = text.isNotBlank() || (m.pending && !showThinking)
+    Column(
         Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 3.dp),
-        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart,
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
-        Text(
-            text = text.ifBlank { if (m.pending) "…" else "" },
-            color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
-            style = MaterialTheme.typography.bodyLarge,
-            fontSize = 16.sp,
-            lineHeight = 21.sp,
-            modifier = Modifier
-                .fillMaxWidth(0.86f)
-                .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
-                .background(if (isUser) Tokens.userBubble else Tokens.assistantBubble, shape)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+        if (showThinking) ThinkingBlock(thinking = thinking, live = m.pending && text.isBlank())
+        if (showBubble) {
+            Text(
+                text = text.ifBlank { "…" },
+                color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
+                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 16.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier
+                    .fillMaxWidth(0.86f)
+                    .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
+                    .background(if (isUser) Tokens.userBubble else Tokens.assistantBubble, shape)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+/** The model's reasoning summary: a one-line header with a chevron, collapsed until tapped. */
+@Composable
+private fun ThinkingBlock(thinking: String, live: Boolean) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, animationSpec = tween(150), label = "chevron")
+    Column(Modifier.fillMaxWidth(0.86f)) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(R.string.thinking_title) + if (live) "…" else "",
+                color = Tokens.label,
+                fontSize = 12.sp,
+            )
+            Icon(
+                painterResource(R.drawable.ic_chevron_down),
+                contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+                tint = Tokens.label,
+                modifier = Modifier.padding(start = 4.dp).size(16.dp).rotate(rotation),
+            )
+        }
+        if (expanded) {
+            Text(
+                text = thinking,
+                color = Tokens.label,
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp).padding(bottom = 6.dp),
+            )
+        }
     }
 }
 

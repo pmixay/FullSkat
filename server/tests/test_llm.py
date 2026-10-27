@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from fullskat_server.config import Settings
-from fullskat_server.llm import AnthropicLLM, LLMError, OpenRouterLLM, Usage, create_llm
+from fullskat_server.llm import AnthropicLLM, LLMError, OpenRouterLLM, Thinking, Usage, create_llm, parse_openrouter_delta
 
 
 def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
@@ -22,10 +22,26 @@ def final_message(stop_reason: str = "end_turn", content: Any = None, inp: int =
     return SimpleNamespace(stop_reason=stop_reason, content=content or [], usage=usage)
 
 
+def content_delta(delta_type: str, **fields: Any) -> SimpleNamespace:
+    return SimpleNamespace(type="content_block_delta", index=0, delta=SimpleNamespace(type=delta_type, **fields))
+
+
+class FakeStream:
+    """Mimics the SDK stream: async-iterable raw events plus text_stream and get_final_message."""
+
+    def __init__(self, events: Any, text_stream: Any, get_final_message: Any) -> None:
+        self._events = events
+        self.text_stream = text_stream
+        self.get_final_message = get_final_message
+
+    def __aiter__(self) -> Any:
+        return self._events
+
+
 class FakeMessages:
     """Stands in for AsyncAnthropic.messages; each stream() call plays the next scripted turn."""
 
-    def __init__(self, turns: list[tuple[list[str], SimpleNamespace] | Exception]) -> None:
+    def __init__(self, turns: list[tuple[list[Any], SimpleNamespace] | Exception]) -> None:
         self.turns = list(turns)
         self.requests: list[dict[str, Any]] = []
 
@@ -39,12 +55,20 @@ class FakeMessages:
 
         async def text_stream():
             for delta in deltas:
-                yield delta
+                if isinstance(delta, str):
+                    yield delta
+
+        async def events():
+            for delta in deltas:
+                if isinstance(delta, str):
+                    yield content_delta("text_delta", text=delta)
+                else:  # ("thinking", "piece")
+                    yield content_delta("thinking_delta", thinking=delta[1])
 
         async def get_final_message() -> SimpleNamespace:
             return final
 
-        yield SimpleNamespace(text_stream=text_stream(), get_final_message=get_final_message)
+        yield FakeStream(events(), text_stream(), get_final_message)
 
 
 def llm_with(settings: Settings, turns: list[Any]) -> tuple[AnthropicLLM, FakeMessages]:
@@ -90,7 +114,27 @@ async def test_anthropic_request_has_system_effort_and_web_search(tmp_path: Path
     assert request["messages"] == [{"role": "user", "content": "weather?"}]  # leading assistant turn dropped
     assert request["output_config"] == {"effort": "medium"}
     assert request["tools"] == [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}]
-    assert "thinking" not in request and "temperature" not in request
+    assert "temperature" not in request
+
+
+async def test_anthropic_streams_thinking_summary(tmp_path: Path) -> None:
+    turn = ([("thinking", "Let me "), ("thinking", "check."), ("thinking", ""), "Hi", "", " there"], final_message())
+    llm, fake = llm_with(make_settings(tmp_path), [turn])
+    items = await collect(llm, MESSAGES)
+    assert items == [
+        Thinking("Let me "),
+        Thinking("check."),
+        "Hi",
+        " there",
+        Usage(prompt_tokens=10, completion_tokens=3),
+    ]
+    assert fake.requests[0]["thinking"] == {"type": "adaptive", "display": "summarized"}
+
+
+async def test_anthropic_thinking_request_can_be_disabled(tmp_path: Path) -> None:
+    llm, fake = llm_with(make_settings(tmp_path, show_thinking=False), [(["ok"], final_message())])
+    await collect(llm, MESSAGES)
+    assert "thinking" not in fake.requests[0]
 
 
 async def test_anthropic_web_search_and_effort_can_be_disabled(tmp_path: Path) -> None:
@@ -102,9 +146,10 @@ async def test_anthropic_web_search_and_effort_can_be_disabled(tmp_path: Path) -
 
 async def test_anthropic_resumes_pause_turn(tmp_path: Path) -> None:
     paused = final_message("pause_turn", content=["server-tool-blocks"], inp=100, out=5)
-    llm, fake = llm_with(make_settings(tmp_path), [(["a"], paused), (["b"], final_message(inp=7, out=2))])
+    turns = [([("thinking", "t"), "a"], paused), (["b"], final_message(inp=7, out=2))]
+    llm, fake = llm_with(make_settings(tmp_path), turns)
     items = await collect(llm, MESSAGES)
-    assert items == ["a", "b", Usage(prompt_tokens=107, completion_tokens=7)]
+    assert items == [Thinking("t"), "a", "b", Usage(prompt_tokens=107, completion_tokens=7)]
     assert fake.requests[1]["messages"][-1] == {"role": "assistant", "content": ["server-tool-blocks"]}
 
 
@@ -145,3 +190,11 @@ def test_openrouter_body_enables_web_plugin(tmp_path: Path) -> None:
     assert body["plugins"] == [{"id": "web", "max_results": 3}]
     off = OpenRouterLLM(make_settings(tmp_path, llm_provider="openrouter", web_search=False), httpx.AsyncClient())
     assert "plugins" not in off._body([{"role": "user", "content": "hi"}], "openai/gpt-5.5")
+
+
+def test_openrouter_delta_parsing_extracts_reasoning() -> None:
+    assert parse_openrouter_delta({"content": "hi"}) == ["hi"]
+    assert parse_openrouter_delta({"reasoning": "hmm", "content": ""}) == [Thinking("hmm")]
+    assert parse_openrouter_delta({"reasoning_content": "hmm"}) == [Thinking("hmm")]
+    assert parse_openrouter_delta({"reasoning": "a", "content": "b"}) == [Thinking("a"), "b"]
+    assert parse_openrouter_delta({"reasoning": None, "content": None, "role": "assistant"}) == []

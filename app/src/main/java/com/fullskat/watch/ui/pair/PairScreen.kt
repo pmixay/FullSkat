@@ -152,7 +152,7 @@ private fun PasscodeStep(state: PairUiState, onSubmit: (String) -> Unit, onRetry
                     onDigit = { if (code.length < MAX_CODE) code += it },
                     onBackspace = { code = code.dropLast(1) },
                     onSubmit = { if (code.length >= MIN_CODE) onSubmit(code) },
-                    modifier = Modifier.alpha(if (locked) 0.2f else 1f),
+                    modifier = Modifier.alpha(if (message != null) 0f else if (busy) 0.2f else 1f),
                 )
                 if (busy) CircularProgressIndicator(modifier = Modifier.size(geo.spinner), strokeWidth = 3.dp)
                 if (message != null) {

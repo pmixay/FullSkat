@@ -47,4 +47,7 @@
     <string name="err_server">Server error</string>
     <string name="err_speech">Speech recognition failed to start</string>
     <string name="err_nothing_heard">Nothing heard</string>
+    <string name="thinking_title">Thinking</string>
+    <string name="expand">Expand</string>
+    <string name="collapse">Collapse</string>
 </resources>

@@ -46,4 +46,7 @@
     <string name="err_server">Ошибка сервера</string>
     <string name="err_speech">Не удалось запустить распознавание речи</string>
     <string name="err_nothing_heard">Ничего не услышал</string>
+    <string name="thinking_title">Размышления</string>
+    <string name="expand">Развернуть</string>
+    <string name="collapse">Свернуть</string>
 </resources>

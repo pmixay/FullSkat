@@ -55,7 +55,7 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     onClick = onModel,
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_model)) },
-                    secondaryLabel = { Text(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = { Text(modelDisplayName(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {
@@ -148,19 +148,28 @@ fun ModelScreen(vm: AppViewModel, onDone: () -> Unit) {
                         onDone()
                     },
                     modifier = itemModifier,
-                    label = { Text(modelName(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    secondaryLabel = { Text(modelVendor(m), fontSize = 11.sp) },
+                    label = { Text(modelDisplayName(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = if ('/' in m) {
+                        { Text(m.substringBefore('/'), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    } else {
+                        null
+                    },
                 )
             }
         }
     }
 }
 
-/** "openai/gpt-5.5" (OpenRouter) -> "gpt-5.5"; Claude API ids such as "claude-haiku-5-5" have no vendor prefix. */
-private fun modelName(id: String): String = id.substringAfter('/')
-
-private fun modelVendor(id: String): String = when {
-    '/' in id -> id.substringBefore('/')
-    id.startsWith("claude") -> "anthropic"
-    else -> ""
+/**
+ * Friendly model name: "claude-sonnet-5-5" -> "Sonnet 5.5", "claude-sonnet-5" -> "Sonnet 5";
+ * OpenRouter ids such as "openai/gpt-5.5" -> "gpt-5.5".
+ */
+internal fun modelDisplayName(id: String): String {
+    if (!id.startsWith("claude-")) return id.substringAfter('/')
+    val parts = id.removePrefix("claude-").split('-').filter { it.isNotEmpty() }
+    val family = parts.takeWhile { p -> !p.all { it.isDigit() } }
+    val version = parts.drop(family.size).takeWhile { p -> p.length <= 2 && p.all { it.isDigit() } }
+    if (family.isEmpty() && version.isEmpty()) return id
+    val familyName = family.joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+    return listOf(familyName, version.joinToString(".")).filter { it.isNotEmpty() }.joinToString(" ")
 }

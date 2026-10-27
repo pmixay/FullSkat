@@ -141,7 +141,8 @@ class ApiClient {
         val o = JSONObject(data)
         when (event) {
             "delta" -> ChatEvent.Delta(o.optString("text"))
-            "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null })
+            "thinking" -> ChatEvent.Thinking(o.optString("text"))
+            "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null }, o.optString("thinking"))
             "error" -> ChatEvent.Error(o.optString("error", "error"), o.optString("message"))
             else -> null
         }

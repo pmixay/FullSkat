@@ -70,8 +70,12 @@ token was revoked (state file reset).
   Markdown, short answers, reply in the language of the user, watch context).
 * The server keeps the last 24 messages / 12k characters of history.
 * Response: `text/event-stream`. Events:
+  * `event: thinking`  `data: {"text": "partial piece"}` (many) - the model's reasoning
+    summary, streamed before or between `delta` events; absent when the model sent none or the
+    server has `SHOW_THINKING=false`
   * `event: delta`  `data: {"text": "partial piece"}` (many)
   * `event: done`   `data: {"text": "<full answer>", "model": "...",
-    "usage": {"prompt_tokens": n, "completion_tokens": n}}`
+    "usage": {"prompt_tokens": n, "completion_tokens": n},
+    "thinking": "<full thinking text, empty string if none>"}`
   * `event: error`  `data: {"error": "<code>", "message": "..."}`
 * Limits per token: 20/min, 500/day (`429`). Request body max 64 KiB.

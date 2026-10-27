@@ -32,6 +32,13 @@ class Usage:
         return {"prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens}
 
 
+@dataclass(frozen=True)
+class Thinking:
+    """A piece of the model's reasoning (summary) text, streamed before or between answer deltas."""
+
+    text: str
+
+
 class LLMError(Exception):
     """Upstream failure mapped to a protocol error code."""
 
@@ -54,6 +61,20 @@ def trim_history(messages: list[dict[str, str]], max_messages: int, max_chars: i
     if kept and len(kept[0]["content"]) > max_chars:
         kept = [{**kept[0], "content": kept[0]["content"][:max_chars]}]
     return kept
+
+
+def parse_openrouter_delta(delta: dict[str, Any]) -> list[str | Thinking]:
+    """Items carried by one OpenRouter stream delta: reasoning pieces first, then answer text."""
+    items: list[str | Thinking] = []
+    for key in ("reasoning", "reasoning_content"):
+        piece = delta.get(key)
+        if isinstance(piece, str) and piece:
+            items.append(Thinking(piece))
+            break
+    text = delta.get("content")
+    if isinstance(text, str) and text:
+        items.append(text)
+    return items
 
 
 def error_code_for_status(status: int) -> str:
@@ -108,8 +129,8 @@ class OpenRouterLLM:
             body["plugins"] = [{"id": "web", "max_results": self._settings.web_search_max_uses}]
         return body
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Usage]:
-        """Yield text deltas (str) and, if the upstream reports it, a final Usage item.
+    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
+        """Yield text deltas (str), Thinking pieces and, if the upstream reports it, a final Usage item.
 
         Raises LLMError for HTTP errors, transport failures and mid-stream error chunks.
         """
@@ -145,10 +166,8 @@ class OpenRouterLLM:
                         raise LLMError("upstream_error", extract_upstream_message(payload.encode()))
                     choices = chunk.get("choices") or []
                     if choices:
-                        delta = choices[0].get("delta") or {}
-                        text = delta.get("content")
-                        if text:
-                            yield text
+                        for item in parse_openrouter_delta(choices[0].get("delta") or {}):
+                            yield item
                     usage = chunk.get("usage")
                     if isinstance(usage, dict):
                         yield Usage(
@@ -191,6 +210,8 @@ class AnthropicLLM:
             "system": system,
             "messages": conversation,
         }
+        if self._settings.show_thinking:
+            request["thinking"] = {"type": "adaptive", "display": "summarized"}
         if self._settings.anthropic_effort:
             request["output_config"] = {"effort": self._settings.anthropic_effort}
         if self._settings.web_search:
@@ -199,8 +220,8 @@ class AnthropicLLM:
             ]
         return request
 
-    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Usage]:
-        """Yield text deltas (str) and a final Usage item. Raises LLMError like OpenRouterLLM."""
+    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Thinking | Usage]:
+        """Yield text deltas (str), Thinking pieces and a final Usage item. Raises LLMError like OpenRouterLLM."""
         if not self._settings.anthropic_api_key:
             raise LLMError("upstream_auth", "ANTHROPIC_API_KEY is not configured on the server")
         system, conversation = _anthropic_conversation(messages)
@@ -211,8 +232,14 @@ class AnthropicLLM:
         try:
             for _ in range(MAX_PAUSE_TURNS):
                 async with self._client.messages.stream(**request) as stream:
-                    async for text in stream.text_stream:
-                        yield text
+                    async for event in stream:
+                        if event.type != "content_block_delta":
+                            continue
+                        delta = event.delta
+                        if delta.type == "thinking_delta" and delta.thinking:
+                            yield Thinking(delta.thinking)
+                        elif delta.type == "text_delta" and delta.text:
+                            yield delta.text
                     final = await stream.get_final_message()
                 usage = final.usage
                 prompt_tokens += (

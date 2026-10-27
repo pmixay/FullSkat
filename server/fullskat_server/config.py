@@ -12,7 +12,7 @@ DEFAULT_ALLOWED_MODELS = (
     "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
     "google/gemini-3.5-flash,anthropic/claude-sonnet-5"
 )
-DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5"
+DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
 
 class Settings(BaseSettings):
@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
     web_search: bool = True
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
+    # Stream the model's reasoning summary to the watch (SSE `thinking` events)
+    show_thinking: bool = True
 
     # Anthropic (chat)
     anthropic_api_key: str = ""
