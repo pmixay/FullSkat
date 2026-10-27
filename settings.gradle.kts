@@ -16,6 +16,16 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // sherpa-onnx (on-device speech recognition) is published only as an AAR on GitHub releases.
+        exclusiveContent {
+            forRepository {
+                ivy("https://github.com/k2-fsa/sherpa-onnx/releases/download") {
+                    patternLayout { artifact("v[revision]/[module]-[revision].[ext]") }
+                    metadataSources { artifact() }
+                }
+            }
+            filter { includeGroup("com.k2fsa.sherpa") }
+        }
     }
 }
 rootProject.name = "FullSkat"

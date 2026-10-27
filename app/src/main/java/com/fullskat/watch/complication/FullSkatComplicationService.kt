@@ -9,7 +9,6 @@ import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.MonochromaticImageComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
-import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageComplicationData
 import androidx.wear.watchface.complications.data.SmallImageType
@@ -18,7 +17,7 @@ import androidx.wear.watchface.complications.datasource.SuspendingComplicationDa
 import com.fullskat.watch.MainActivity
 import com.fullskat.watch.R
 
-/** Round watch-face widget: a mic that opens a fresh dialog and listens. Static, so it never wakes the CPU. */
+/** Round watch-face widget: just a mic icon (no text) that opens a fresh dialog and listens. Static, so it never wakes the CPU. */
 @SuppressLint("WearRecents") // NEW_TASK is mandatory when a PendingIntent from a service starts an activity
 class FullSkatComplicationService : SuspendingComplicationDataSourceService() {
 
@@ -44,11 +43,6 @@ class FullSkatComplicationService : SuspendingComplicationDataSourceService() {
                     .build()
             ComplicationType.SMALL_IMAGE ->
                 SmallImageComplicationData.Builder(SmallImage.Builder(icon, SmallImageType.ICON).build(), description)
-                    .setTapAction(tap)
-                    .build()
-            ComplicationType.SHORT_TEXT ->
-                ShortTextComplicationData.Builder(PlainComplicationText.Builder(getString(R.string.complication_short)).build(), description)
-                    .setMonochromaticImage(MonochromaticImage.Builder(icon).build())
                     .setTapAction(tap)
                     .build()
             else -> null

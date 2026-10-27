@@ -15,22 +15,17 @@ data class PairResult(
     val firstSetup: Boolean,
     val serverName: String?,
     val model: String?,
+    val models: List<String>,
+    val effort: String?,
 )
 
-data class MeResult(val model: String?, val deviceName: String?)
+data class MeResult(val model: String?, val models: List<String>, val effort: String?, val deviceName: String?)
 
 data class ChatMessage(val role: String, val content: String)
 
 sealed interface ChatEvent {
     data class Delta(val text: String) : ChatEvent
-    data class Done(val text: String, val model: String?) : ChatEvent
+    data class Thinking(val text: String) : ChatEvent
+    data class Done(val text: String, val model: String?, val thinking: String) : ChatEvent
     data class Error(val code: String, val message: String) : ChatEvent
-}
-
-sealed interface ListenEvent {
-    data object Ready : ListenEvent
-    data class Partial(val text: String) : ListenEvent
-    data class Speech(val active: Boolean) : ListenEvent
-    data class Final(val text: String, val lang: String?) : ListenEvent
-    data class Error(val code: String, val message: String) : ListenEvent
 }

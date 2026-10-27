@@ -32,14 +32,14 @@ class ApiClient {
 
     private val json = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun pair(serverUrl: String, passcode: String, deviceId: String, deviceName: String): PairResult =
+    suspend fun pair(passcode: String, deviceId: String, deviceName: String): PairResult =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("passcode", passcode)
                 .put("device_id", deviceId)
                 .put("device_name", deviceName)
             val req = Request.Builder()
-                .url("${serverUrl.trimEnd('/')}/v1/pair")
+                .url("${ServerEndpoint.URL}/v1/pair")
                 .post(body.toString().toRequestBody(json))
                 .build()
             execute(req).use { resp ->
@@ -52,6 +52,8 @@ class ApiClient {
                             firstSetup = o.optBoolean("first_setup", resp.code == 201),
                             serverName = o.optString("server_name").ifBlank { null },
                             model = o.optString("model").ifBlank { null },
+                            models = o.optStrings("models"),
+                            effort = o.optString("effort").ifBlank { null },
                         )
                     }
                     401 -> throw ApiException.WrongPasscode()
@@ -71,7 +73,7 @@ class ApiClient {
             val text = resp.body.string()
             when (resp.code) {
                 200 -> JSONObject(text).let {
-                    MeResult(it.optString("model").ifBlank { null }, it.optString("device_name").ifBlank { null })
+                    MeResult(it.optString("model").ifBlank { null }, it.optStrings("models"), it.optString("effort").ifBlank { null }, it.optString("device_name").ifBlank { null })
                 }
                 401 -> throw ApiException.Unauthorized(errorMessage(text))
                 429 -> throw ApiException.RateLimited(resp.retryAfter())
@@ -88,6 +90,8 @@ class ApiClient {
         messages: List<ChatMessage>,
         model: String?,
         locale: String,
+        effort: String?,
+        webSearch: Boolean,
     ): Flow<ChatEvent> = flow {
         val body = JSONObject()
             .put("dialog_id", dialogId)
@@ -96,6 +100,8 @@ class ApiClient {
                 messages.forEach { put(JSONObject().put("role", it.role).put("content", it.content)) }
             })
         if (model != null) body.put("model", model)
+        if (effort != null) body.put("effort", effort)
+        body.put("web_search", webSearch)
         val req = Request.Builder()
             .url("${serverUrl.trimEnd('/')}/v1/chat")
             .header("Authorization", "Bearer $token")
@@ -140,7 +146,8 @@ class ApiClient {
         val o = JSONObject(data)
         when (event) {
             "delta" -> ChatEvent.Delta(o.optString("text"))
-            "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null })
+            "thinking" -> ChatEvent.Thinking(o.optString("text"))
+            "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null }, o.optString("thinking"))
             "error" -> ChatEvent.Error(o.optString("error", "error"), o.optString("message"))
             else -> null
         }
@@ -153,6 +160,11 @@ class ApiClient {
         http.newCall(req).execute()
     } catch (e: IOException) {
         throw ApiException.Network(e.message ?: "network")
+    }
+
+    private fun JSONObject.optStrings(name: String): List<String> {
+        val a = optJSONArray(name) ?: return emptyList()
+        return (0 until a.length()).mapNotNull { a.optString(it).ifBlank { null } }
     }
 
     private fun Response.retryAfter(): Int = header("Retry-After")?.toIntOrNull() ?: 30

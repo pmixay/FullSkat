@@ -5,9 +5,9 @@ import android.content.Context
 import com.fullskat.watch.audio.AudioCapture
 import com.fullskat.watch.data.db.AppDatabase
 import com.fullskat.watch.data.net.ApiClient
-import com.fullskat.watch.data.net.ListenClient
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.domain.AssistantTurn
+import com.fullskat.watch.speech.LocalSpeech
 
 /** Hand-rolled dependency container: the app is small enough that a DI framework would only add APK size. */
 class AppContainer(val appContext: Context) {
@@ -15,10 +15,10 @@ class AppContainer(val appContext: Context) {
     val db: AppDatabase by lazy { AppDatabase.build(context) }
     val settings: SettingsRepository by lazy { SettingsRepository(context) }
     val api: ApiClient by lazy { ApiClient() }
-    val listenClient: ListenClient by lazy { ListenClient(api.http) }
+    val speech: LocalSpeech by lazy { LocalSpeech(context) }
     val audioCapture: AudioCapture by lazy { AudioCapture() }
 
-    fun newTurn(): AssistantTurn = AssistantTurn(context, db.dialogDao(), settings, api, listenClient, audioCapture)
+    fun newTurn(): AssistantTurn = AssistantTurn(context, db.dialogDao(), settings, api, speech, audioCapture)
 }
 
 class FullSkatApp : Application() {

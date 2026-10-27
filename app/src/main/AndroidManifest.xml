@@ -109,7 +109,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="MONOCHROMATIC_IMAGE,SMALL_IMAGE,SHORT_TEXT" />
+                android:value="MONOCHROMATIC_IMAGE,SMALL_IMAGE" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />

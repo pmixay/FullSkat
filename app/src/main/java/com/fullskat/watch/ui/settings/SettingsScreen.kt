@@ -32,14 +32,14 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.BuildConfig
 import com.fullskat.watch.R
 import com.fullskat.watch.assistant.FullSkatVoiceInteractionService
-import com.fullskat.watch.data.prefs.SpeechLang
+import com.fullskat.watch.data.net.ServerEndpoint
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.theme.Tokens
 
 private val itemModifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, onUnpaired: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, onRepair: () -> Unit, onUnpaired: () -> Unit) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cfg = settings ?: return
@@ -55,20 +55,23 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     onClick = onModel,
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_model)) },
-                    secondaryLabel = { Text(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = { Text(modelDisplayName(cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {
-                val next = when (cfg.lang) {
-                    SpeechLang.AUTO -> SpeechLang.RU
-                    SpeechLang.RU -> SpeechLang.EN
-                    SpeechLang.EN -> SpeechLang.AUTO
-                }
                 FilledTonalButton(
-                    onClick = { vm.setLang(next) },
+                    onClick = onEffort,
                     modifier = itemModifier,
-                    label = { Text(stringResource(R.string.settings_language)) },
-                    secondaryLabel = { Text(langLabel(cfg.lang)) },
+                    label = { Text(stringResource(R.string.settings_effort)) },
+                    secondaryLabel = { Text(effortSummary(cfg.effort, cfg.serverEffort), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            item {
+                SwitchButton(
+                    checked = cfg.webSearch,
+                    onCheckedChange = vm::setWebSearch,
+                    modifier = itemModifier,
+                    label = { Text(stringResource(R.string.settings_web_search)) },
                 )
             }
             item {
@@ -101,7 +104,7 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     onClick = onRepair,
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_server)) },
-                    secondaryLabel = { Text(cfg.serverUrl.removePrefix("https://"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = { Text(ServerEndpoint.URL.removePrefix("https://"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {
@@ -139,19 +142,15 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
 }
 
 @Composable
-private fun langLabel(lang: SpeechLang): String = when (lang) {
-    SpeechLang.AUTO -> stringResource(R.string.lang_auto)
-    SpeechLang.RU -> stringResource(R.string.lang_ru)
-    SpeechLang.EN -> stringResource(R.string.lang_en)
-}
-
-@Composable
 fun ModelScreen(vm: AppViewModel, onDone: () -> Unit) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cfg = settings ?: return
     val listState = rememberTransformingLazyColumnState()
     val selected = cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL
-    val models = remember(cfg.serverModel) { (listOf(cfg.serverModel) + AppViewModel.MODELS).filterNotNull().distinct() }
+    val models = remember(cfg.serverModel, cfg.serverModels) {
+        val offered = cfg.serverModels.ifEmpty { AppViewModel.MODELS }
+        (listOf(cfg.serverModel) + offered).filterNotNull().distinct()
+    }
 
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
@@ -165,8 +164,77 @@ fun ModelScreen(vm: AppViewModel, onDone: () -> Unit) {
                         onDone()
                     },
                     modifier = itemModifier,
-                    label = { Text(m.substringAfter('/'), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    secondaryLabel = { Text(m.substringBefore('/'), fontSize = 11.sp) },
+                    label = { Text(modelDisplayName(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = if ('/' in m) {
+                        { Text(m.substringBefore('/'), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Friendly model name: "claude-sonnet-5-5" -> "Sonnet 5.5", "claude-sonnet-5" -> "Sonnet 5";
+ * OpenRouter ids such as "openai/gpt-5.5" -> "gpt-5.5".
+ */
+internal fun modelDisplayName(id: String): String {
+    if (!id.startsWith("claude-")) return id.substringAfter('/')
+    val parts = id.removePrefix("claude-").split('-').filter { it.isNotEmpty() }
+    val family = parts.takeWhile { p -> !p.all { it.isDigit() } }
+    val version = parts.drop(family.size).takeWhile { p -> p.length <= 2 && p.all { it.isDigit() } }
+    if (family.isEmpty() && version.isEmpty()) return id
+    val familyName = family.joinToString(" ") { w -> w.replaceFirstChar { it.uppercase() } }
+    return listOf(familyName, version.joinToString(".")).filter { it.isNotEmpty() }.joinToString(" ")
+}
+
+@Composable
+private fun effortName(effort: String): String = stringResource(
+    when (effort) {
+        "low" -> R.string.effort_low
+        "medium" -> R.string.effort_medium
+        "high" -> R.string.effort_high
+        "xhigh" -> R.string.effort_xhigh
+        else -> R.string.effort_max
+    },
+)
+
+/** "Medium", or "Default (Medium)" when the watch leaves the choice to the server. */
+@Composable
+private fun effortSummary(effort: String?, serverEffort: String?): String {
+    if (effort != null) return effortName(effort)
+    val default = stringResource(R.string.effort_default)
+    return if (serverEffort != null && serverEffort in AppViewModel.EFFORTS) "$default (${effortName(serverEffort)})" else default
+}
+
+@Composable
+fun EffortScreen(vm: AppViewModel, onDone: () -> Unit) {
+    val settings by vm.settings.collectAsStateWithLifecycle()
+    val cfg = settings ?: return
+    val listState = rememberTransformingLazyColumnState()
+    val options: List<String?> = listOf<String?>(null) + AppViewModel.EFFORTS
+
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+            item { ListHeader { Text(stringResource(R.string.settings_effort), color = Tokens.accent) } }
+            items(options.size) { i ->
+                val e = options[i]
+                val serverEffort = cfg.serverEffort
+                RadioButton(
+                    selected = e == cfg.effort,
+                    onSelect = {
+                        vm.setEffort(e)
+                        onDone()
+                    },
+                    modifier = itemModifier,
+                    label = { Text(if (e == null) stringResource(R.string.effort_default) else effortName(e), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = if (e == null && serverEffort != null && serverEffort in AppViewModel.EFFORTS) {
+                        { Text(effortName(serverEffort), fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    } else {
+                        null
+                    },
                 )
             }
         }

@@ -15,10 +15,6 @@ COPY pyproject.toml README.md ./
 COPY fullskat_server ./fullskat_server
 RUN pip install .
 
-# For local speech recognition build with: --build-arg EXTRAS=whisper
-ARG EXTRAS=
-RUN if [ -n "$EXTRAS" ]; then pip install ".[$EXTRAS]"; fi
-
 USER fullskat
 VOLUME ["/data"]
 EXPOSE 8080

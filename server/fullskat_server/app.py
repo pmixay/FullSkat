@@ -1,4 +1,4 @@
-"""FastAPI application: pairing, chat relay (SSE) and listening (WebSocket)."""
+"""FastAPI application: pairing and chat relay (SSE)."""
 
 from __future__ import annotations
 
@@ -9,18 +9,16 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal
 
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from .auth import InvalidPasscode, StateStore, TokenRecord, token_hash
 from .config import Settings, load_settings
-from .listen import CLOSE_POLICY_VIOLATION, ListenSession
-from .llm import LLMError, OpenRouterLLM, Usage, trim_history
+from .llm import LLMError, Thinking, Usage, create_llm, trim_history
 from .prompts import build_system_prompt
 from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
-from .stt import STTBackend, create_stt
 
 log = logging.getLogger(__name__)
 
@@ -67,17 +65,19 @@ class ChatRequest(BaseModel):
     locale: str = Field(default="", max_length=32)
     model: str | None = None
     messages: list[ChatMessage] = Field(min_length=1)
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    web_search: bool | None = None
 
 
 # ---- helpers --------------------------------------------------------------
 
 
-def client_ip(scope_holder: Request | WebSocket, settings: Settings) -> str:
+def client_ip(request: Request, settings: Settings) -> str:
     if settings.trust_proxy_headers:
-        forwarded = scope_holder.headers.get("x-forwarded-for")
+        forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
             return forwarded.split(",")[0].strip()
-    return scope_holder.client.host if scope_holder.client else "unknown"
+    return request.client.host if request.client else "unknown"
 
 
 def _bearer_token(authorization: str | None) -> str | None:
@@ -93,32 +93,41 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _default_effort(settings: Settings) -> str:
+    """The server's default reasoning effort for the active provider ("" if none)."""
+    if settings.llm_provider == "anthropic":
+        return settings.anthropic_effort
+    return settings.openrouter_reasoning_effort
+
+
 def _limits(settings: Settings) -> dict[str, int]:
     return {
         "chat_per_min": settings.chat_per_min,
-        "listen_per_min": settings.listen_per_min,
         "chat_per_day": settings.chat_per_day,
-        "listen_per_day": settings.listen_per_day,
     }
 
 
 # ---- app factory ----------------------------------------------------------
 
 
-def create_app(settings: Settings | None = None, stt: STTBackend | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info(
-            "FullSkat server ready: model=%s stt=%s data_dir=%s",
-            settings.openrouter_model,
-            settings.stt_backend,
+            "FullSkat server ready: provider=%s model=%s web_search=%s data_dir=%s",
+            settings.llm_provider,
+            settings.chat_model,
+            settings.web_search,
             settings.data_dir,
         )
         try:
             yield
         finally:
+            close_llm = getattr(app.state.llm, "aclose", None)
+            if close_llm is not None:
+                await close_llm()
             await app.state.http.aclose()
 
     app = FastAPI(title="FullSkat server", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -126,11 +135,9 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
     app.state.settings = settings
     app.state.http = http
     app.state.store = StateStore(settings.data_dir / "state.json")
-    app.state.llm = OpenRouterLLM(settings, http)
-    app.state.stt = stt or create_stt(settings, http)
+    app.state.llm = create_llm(settings, http)
     app.state.pair_limiter = PairLimiter(settings.pair_per_min, settings.pair_lock_failures, settings.pair_lock_minutes)
     app.state.chat_limiter = SlidingWindowLimiter(settings.chat_per_min, settings.chat_per_day)
-    app.state.listen_limiter = SlidingWindowLimiter(settings.listen_per_min, settings.listen_per_day)
 
     # ---- error handlers ----
 
@@ -191,7 +198,10 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
             "token": result.token,
             "first_setup": result.first_setup,
             "server_name": settings.server_name,
-            "model": settings.openrouter_model,
+            "model": settings.chat_model,
+            "models": settings.allowed_models,
+            "effort": _default_effort(settings),
+            "web_search": settings.web_search,
         }
         return JSONResponse(payload, status_code=201 if result.first_setup else 200)
 
@@ -201,7 +211,10 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
         return {
             "device_id": record.device_id,
             "device_name": record.device_name,
-            "model": settings.openrouter_model,
+            "model": settings.chat_model,
+            "models": settings.allowed_models,
+            "effort": _default_effort(settings),
+            "web_search": settings.web_search,
             "limits": _limits(settings),
         }
 
@@ -221,7 +234,7 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
             body = ChatRequest.model_validate_json(raw)
         except ValidationError as exc:
             raise ApiError(400, "invalid_request", _describe_validation(exc)) from exc
-        model = body.model or settings.openrouter_model
+        model = body.model or settings.chat_model
         if model not in settings.allowed_models:
             raise ApiError(400, "model_not_allowed", f"model {model!r} is not in the server allowlist")
 
@@ -235,11 +248,18 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
 
         async def events() -> AsyncIterator[str]:
             parts: list[str] = []
+            thinking_parts: list[str] = []
             usage = Usage(prompt_tokens=0, completion_tokens=0)
             try:
-                async for item in app.state.llm.stream(messages, model):
+                async for item in app.state.llm.stream(
+                    messages, model, effort=body.effort, web_search=body.web_search
+                ):
                     if isinstance(item, Usage):
                         usage = item
+                        continue
+                    if isinstance(item, Thinking):
+                        thinking_parts.append(item.text)
+                        yield _sse("thinking", {"text": item.text})
                         continue
                     parts.append(item)
                     yield _sse("delta", {"text": item})
@@ -250,33 +270,18 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
                 log.exception("chat stream failed")
                 yield _sse("error", {"error": "internal_error", "message": "chat stream failed"})
                 return
-            yield _sse("done", {"text": "".join(parts), "model": model, "usage": usage.to_json()})
+            done = {
+                "text": "".join(parts),
+                "model": model,
+                "usage": usage.to_json(),
+                "thinking": "".join(thinking_parts),
+            }
+            yield _sse("done", done)
 
         headers = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
         return StreamingResponse(events(), media_type="text/event-stream", headers=headers)
 
-    @app.websocket("/v1/listen")
-    async def listen(ws: WebSocket) -> None:
-        token = _bearer_token(ws.headers.get("authorization")) or ws.query_params.get("token")
-        await ws.accept()
-        try:
-            record, key = authenticate(token)
-        except ApiError as exc:
-            await _ws_reject(ws, exc.code, str(exc.detail))
-            return
-        decision = app.state.listen_limiter.check("listen", key)
-        if not decision.allowed:
-            await _ws_reject(ws, "rate_limited", f"rate limit exceeded, retry after {decision.retry_after}s")
-            return
-        log.info("listen: device=%s from %s", record.device_id, client_ip(ws, settings))
-        await ListenSession(ws, settings, app.state.stt).run()
-
     return app
-
-
-async def _ws_reject(ws: WebSocket, code: str, message: str) -> None:
-    await ws.send_text(json.dumps({"type": "error", "error": code, "message": message}, ensure_ascii=False))
-    await ws.close(code=CLOSE_POLICY_VIOLATION)
 
 
 def _describe_validation(errors: ValidationError | list[dict[str, Any]] | Exception) -> str:

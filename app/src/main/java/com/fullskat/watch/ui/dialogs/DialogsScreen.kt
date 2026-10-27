@@ -1,9 +1,11 @@
 package com.fullskat.watch.ui.dialogs
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -22,10 +24,10 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
-import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.IconButton
+import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
@@ -49,15 +51,24 @@ fun DialogsScreen(vm: AppViewModel, onOpen: (String) -> Unit, onNew: (String) ->
                 ListHeader { Text(stringResource(R.string.app_name), color = Tokens.accent) }
             }
             item {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(
+                // Icon-only actions in one row, so the first chat is visible without scrolling.
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FilledIconButton(
                         onClick = { scope.launch { onNew(vm.newDialog()) } },
-                        modifier = Modifier.weight(1f),
-                        icon = { Icon(painterResource(R.drawable.ic_mic), contentDescription = null) },
-                        label = { Text(stringResource(R.string.new_dialog), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    )
-                    IconButton(onClick = onSettings, modifier = Modifier.padding(start = 6.dp)) {
-                        Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings))
+                        modifier = Modifier.size(52.dp),
+                    ) {
+                        Icon(painterResource(R.drawable.ic_new_chat), contentDescription = stringResource(R.string.new_dialog), modifier = Modifier.size(24.dp))
+                    }
+                    FilledIconButton(
+                        onClick = onSettings,
+                        modifier = Modifier.size(52.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = Tokens.surfaceHigh, contentColor = Tokens.accent),
+                    ) {
+                        Icon(painterResource(R.drawable.ic_settings), contentDescription = stringResource(R.string.settings), modifier = Modifier.size(24.dp))
                     }
                 }
             }

@@ -1,65 +1,87 @@
 package com.fullskat.watch.ui.pair
 
-import android.app.RemoteInput
-import android.content.Intent
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
-import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
-import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.CircularProgressIndicator
-import androidx.wear.compose.material3.EdgeButton
-import androidx.wear.compose.material3.EdgeButtonSize
-import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
-import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TextButton
-import androidx.wear.compose.material3.TextButtonDefaults
-import androidx.wear.input.RemoteInputIntentHelper
 import com.fullskat.watch.R
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.PairUiState
 import com.fullskat.watch.ui.theme.Tokens
 import kotlinx.coroutines.delay
 
-private const val KEY_URL = "server_url"
+private const val MIN_CODE = 4
+private const val MAX_CODE = 8
+
+/**
+ * All sizes of the passcode screen as functions of the diameter [d] (dp) of the round display.
+ *
+ * The block (hint, dots, 3x4 keypad) is centered on the circle and every rectangle of it keeps its
+ * corners inside a circle of radius d / 2 - [margin]. Rows near the top and bottom are narrow chords,
+ * so the hint is short, the dots are tiny and the two icon keys of the bottom row are smaller.
+ * Every slot has a fixed size, so neither a longer message, a growing code nor the busy/done state
+ * moves anything: messages and progress are overlaid on the dimmed keypad.
+ */
+private class PadGeometry(d: Float) {
+    val margin = maxOf(10f, 0.055f * d).dp
+    val key = (0.152f * d).dp
+    val sideKey = (0.84f * 0.152f * d).dp
+    val gap = maxOf(2.5f, 0.014f * d).dp
+    val gapV = maxOf(2f, 0.014f * d).dp
+    val hintW = (0.42f * d).dp
+    val hintH = (0.056f * d).dp
+    val hintFont = (0.046f * d).dp
+    val dot = maxOf(5f, 0.032f * d).dp
+    val dotGap = (0.02f * d).dp
+    val dotsW = (8 * maxOf(5f, 0.032f * d) + 7 * 0.02f * d).dp
+    val keypadW = (3 * 0.152f * d + 2 * maxOf(2.5f, 0.014f * d)).dp
+    val keypadH = (4 * 0.152f * d + 3 * maxOf(2.5f, 0.014f * d)).dp
+    val digitFont = (0.44f * 0.152f * d).dp
+    val keyIcon = (0.5f * 0.152f * d).dp
+    val overlayW = (0.70f * d).dp
+    val msgFont = (0.05f * d).dp
+    val msgLine = (0.058f * d).dp
+    val doneIcon = (0.11f * d).dp
+    val spinner = (0.12f * d).dp
+}
+
+@Composable
+private fun Dp.asSp(): TextUnit = with(LocalDensity.current) { this@asSp.toSp() }
 
 @Composable
 fun PairScreen(vm: AppViewModel, onPaired: () -> Unit) {
-    val settings by vm.settings.collectAsStateWithLifecycle()
-    var url by rememberSaveable { mutableStateOf(settings?.serverUrl.orEmpty()) }
-    var step by rememberSaveable { mutableIntStateOf(0) }
     val state by vm.pairState.collectAsStateWithLifecycle()
 
     LaunchedEffect(state) {
@@ -71,88 +93,19 @@ fun PairScreen(vm: AppViewModel, onPaired: () -> Unit) {
         }
     }
 
-    when (step) {
-        0 -> ServerStep(url = url, onUrl = { url = it }, onNext = { step = 1 })
-        else -> PasscodeStep(
-            state = state,
-            onBack = { vm.resetPairState(); step = 0 },
-            onSubmit = { code -> vm.pair(url, code, Build.MODEL ?: "Wear OS") },
-            onRetry = { vm.resetPairState() },
-        )
-    }
+    PasscodeStep(
+        state = state,
+        onSubmit = { code -> vm.pair(code, Build.MODEL ?: "Wear OS") },
+        onRetry = { vm.resetPairState() },
+    )
 }
 
 @Composable
-private fun ServerStep(url: String, onUrl: (String) -> Unit, onNext: () -> Unit) {
-    val listState = rememberTransformingLazyColumnState()
-    val valid = remember(url) { isValidUrl(url) }
-    val input = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val text = result.data?.let { RemoteInput.getResultsFromIntent(it) }?.getCharSequence(KEY_URL)?.toString()
-        if (!text.isNullOrBlank()) onUrl(normalizeUrl(text))
-    }
-    val hint = stringResource(R.string.pair_server_hint)
-    val label = stringResource(R.string.pair_server)
-    val openInput = {
-        val intent: Intent = RemoteInputIntentHelper.createActionRemoteInputIntent()
-        RemoteInputIntentHelper.putTitleExtra(intent, label)
-        RemoteInputIntentHelper.putRemoteInputsExtra(
-            intent,
-            listOf(RemoteInput.Builder(KEY_URL).setLabel(hint).setAllowFreeFormInput(true).build()),
-        )
-        input.launch(intent)
-    }
-
-    ScreenScaffold(
-        scrollState = listState,
-        edgeButton = {
-            EdgeButton(onClick = onNext, enabled = valid, buttonSize = EdgeButtonSize.Small) {
-                Text(stringResource(R.string.next))
-            }
-        },
-    ) { contentPadding ->
-        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
-            item { ListHeader { Text(stringResource(R.string.pair_title), color = Tokens.accent) } }
-            item {
-                Text(
-                    stringResource(R.string.pair_server),
-                    color = Tokens.userText,
-                    fontSize = 12.sp,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                )
-            }
-            item {
-                FilledTonalButton(
-                    onClick = openInput,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-                    label = {
-                        Text(
-                            url.ifBlank { hint },
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            color = if (url.isBlank()) Tokens.label else Tokens.assistantText,
-                        )
-                    },
-                )
-            }
-            if (url.isNotBlank() && !valid) {
-                item {
-                    Text(
-                        stringResource(R.string.pair_bad_url),
-                        color = Tokens.error,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PasscodeStep(state: PairUiState, onBack: () -> Unit, onSubmit: (String) -> Unit, onRetry: () -> Unit) {
+private fun PasscodeStep(state: PairUiState, onSubmit: (String) -> Unit, onRetry: () -> Unit) {
     var code by rememberSaveable { mutableStateOf("") }
     val busy = state is PairUiState.Busy
+    val done = state is PairUiState.Success
+    val failed = state is PairUiState.Failed
     val message: String? = when (val s = state) {
         is PairUiState.Failed -> when (s.reason) {
             PairUiState.Failed.Reason.WRONG -> stringResource(R.string.pair_wrong)
@@ -171,40 +124,109 @@ private fun PasscodeStep(state: PairUiState, onBack: () -> Unit, onSubmit: (Stri
         }
     }
 
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(
-                text = message ?: stringResource(R.string.pair_passcode),
-                color = when (state) {
-                    is PairUiState.Failed -> Tokens.error
-                    is PairUiState.Success -> Tokens.accent
-                    else -> Tokens.userText
-                },
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                modifier = Modifier.padding(horizontal = 30.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = if (code.isEmpty()) "· · · ·" else "•".repeat(code.length),
-                color = Tokens.assistantText,
-                fontSize = 18.sp,
-                letterSpacing = 3.sp,
-            )
-            Spacer(Modifier.height(4.dp))
-            if (busy || state is PairUiState.Success) {
-                Box(Modifier.height(112.dp), contentAlignment = Alignment.Center) {
-                    if (busy) CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 3.dp)
-                    else Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = Tokens.accent, modifier = Modifier.size(32.dp))
-                }
-            } else {
+    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // The window is the full square, the bezel cuts it to the inscribed circle.
+        val geo = PadGeometry(maxOf(120f, minOf(maxWidth.value, maxHeight.value)))
+        val locked = busy || done || failed
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(geo.hintW, geo.hintH), contentAlignment = Alignment.Center) {
+                Text(
+                    text = stringResource(R.string.pair_passcode),
+                    color = Tokens.userText,
+                    fontSize = geo.hintFont.asSp(),
+                    lineHeight = geo.hintH.asSp(),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(Modifier.size(geo.dotsW, geo.gapV + geo.dot + geo.gapV), contentAlignment = Alignment.Center) {
+                CodeDots(length = code.length, geo = geo)
+            }
+            Box(Modifier.size(geo.overlayW, geo.keypadH), contentAlignment = Alignment.Center) {
                 Keypad(
-                    onDigit = { if (code.length < 8) code += it },
+                    geo = geo,
+                    enabled = !locked,
+                    hasCode = code.isNotEmpty(),
+                    canSubmit = code.length >= MIN_CODE,
+                    onDigit = { if (code.length < MAX_CODE) code += it },
                     onBackspace = { code = code.dropLast(1) },
-                    onSubmit = { if (code.length >= 4) onSubmit(code) },
-                    canSubmit = code.length >= 4,
-                    onBack = onBack,
+                    onSubmit = { if (code.length >= MIN_CODE) onSubmit(code) },
+                    modifier = Modifier.alpha(if (message != null) 0f else if (busy) 0.2f else 1f),
+                )
+                if (busy) CircularProgressIndicator(modifier = Modifier.size(geo.spinner), strokeWidth = 3.dp)
+                if (message != null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        if (done) {
+                            Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = Tokens.accent, modifier = Modifier.size(geo.doneIcon))
+                        }
+                        Text(
+                            text = message,
+                            color = if (failed) Tokens.error else Tokens.accent,
+                            fontSize = geo.msgFont.asSp(),
+                            lineHeight = geo.msgLine.asSp(),
+                            textAlign = TextAlign.Center,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.width(geo.overlayW),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** One dot per entered digit, at least [MIN_CODE] slots; dots are drawn, not glyphs, so the row height never changes. */
+@Composable
+private fun CodeDots(length: Int, geo: PadGeometry) {
+    Row(horizontalArrangement = Arrangement.spacedBy(geo.dotGap), verticalAlignment = Alignment.CenterVertically) {
+        repeat(maxOf(MIN_CODE, length)) { i ->
+            Box(Modifier.size(geo.dot).clip(CircleShape).background(if (i < length) Tokens.accent else Tokens.surfaceHigh))
+        }
+    }
+}
+
+@Composable
+private fun Keypad(
+    geo: PadGeometry,
+    enabled: Boolean,
+    hasCode: Boolean,
+    canSubmit: Boolean,
+    onDigit: (Char) -> Unit,
+    onBackspace: () -> Unit,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(geo.gap)) {
+        listOf("123", "456", "789").forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(geo.gap)) {
+                row.forEach { d -> DigitKey(geo, d.toString(), enabled) { onDigit(d) } }
+            }
+        }
+        // The icon keys are smaller than the digits: the bottom row is the narrowest chord of the circle.
+        Row(horizontalArrangement = Arrangement.spacedBy(geo.gap), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(geo.key), contentAlignment = Alignment.Center) {
+                IconKey(
+                    geo = geo,
+                    icon = R.drawable.ic_backspace,
+                    description = stringResource(R.string.back),
+                    enabled = enabled && hasCode,
+                    background = Color.Transparent,
+                    tint = Tokens.userText,
+                    onClick = onBackspace,
+                )
+            }
+            DigitKey(geo, "0", enabled) { onDigit('0') }
+            Box(Modifier.size(geo.key), contentAlignment = Alignment.Center) {
+                IconKey(
+                    geo = geo,
+                    icon = R.drawable.ic_check,
+                    description = stringResource(R.string.pair_connect),
+                    enabled = enabled && canSubmit,
+                    background = Tokens.accent,
+                    tint = Tokens.onAccent,
+                    onClick = onSubmit,
                 )
             }
         }
@@ -212,52 +234,46 @@ private fun PasscodeStep(state: PairUiState, onBack: () -> Unit, onSubmit: (Stri
 }
 
 @Composable
-private fun Keypad(onDigit: (Char) -> Unit, onBackspace: () -> Unit, onSubmit: () -> Unit, canSubmit: Boolean, onBack: () -> Unit) {
-    val rows = listOf("123", "456", "789")
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                row.forEach { d -> KeyButton(d.toString()) { onDigit(d) } }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBackspace, modifier = Modifier.size(30.dp), colors = TextButtonDefaults.textButtonColors(contentColor = Tokens.userText)) {
-                Icon(painterResource(R.drawable.ic_backspace), contentDescription = stringResource(R.string.back), modifier = Modifier.size(16.dp))
-            }
-            KeyButton("0") { onDigit('0') }
-            TextButton(
-                onClick = onSubmit,
-                enabled = canSubmit,
-                modifier = Modifier.size(30.dp),
-                colors = TextButtonDefaults.filledTextButtonColors(),
-            ) {
-                Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.pair_connect), modifier = Modifier.size(16.dp))
-            }
-        }
-        TextButton(onClick = onBack, modifier = Modifier.height(24.dp).padding(top = 2.dp), colors = TextButtonDefaults.textButtonColors(contentColor = Tokens.label)) {
-            Text(stringResource(R.string.pair_server), fontSize = 10.sp)
-        }
+private fun DigitKey(geo: PadGeometry, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(geo.key)
+            .alpha(if (enabled) 1f else 0.38f)
+            .clip(CircleShape)
+            .background(Tokens.surfaceHigh)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = Tokens.assistantText,
+            fontSize = geo.digitFont.asSp(),
+            lineHeight = (geo.digitFont * 1.2f).asSp(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelMedium,
+        )
     }
 }
 
 @Composable
-private fun KeyButton(label: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.size(30.dp),
-        colors = androidx.wear.compose.material3.ButtonDefaults.filledTonalButtonColors(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+private fun IconKey(
+    geo: PadGeometry,
+    icon: Int,
+    description: String,
+    enabled: Boolean,
+    background: Color,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        Modifier
+            .size(geo.sideKey)
+            .alpha(if (enabled) 1f else 0.38f)
+            .clip(CircleShape)
+            .background(background)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(label, fontSize = 14.sp, style = MaterialTheme.typography.labelMedium)
+        Icon(painterResource(icon), contentDescription = description, tint = tint, modifier = Modifier.size(geo.keyIcon))
     }
-}
-
-private fun normalizeUrl(raw: String): String {
-    val t = raw.trim().trimEnd('/')
-    return if (t.startsWith("http://") || t.startsWith("https://")) t else "https://$t"
-}
-
-private fun isValidUrl(url: String): Boolean {
-    val u = runCatching { java.net.URI(url) }.getOrNull() ?: return false
-    return (u.scheme == "https" || u.scheme == "http") && !u.host.isNullOrBlank()
 }

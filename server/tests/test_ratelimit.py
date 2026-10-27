@@ -30,7 +30,7 @@ def test_keys_and_scopes_are_independent() -> None:
     assert limiter.check("chat", "a").allowed
     assert not limiter.check("chat", "a").allowed
     assert limiter.check("chat", "b").allowed
-    assert limiter.check("listen", "a").allowed
+    assert limiter.check("other", "a").allowed
 
 
 def test_per_day_window() -> None:

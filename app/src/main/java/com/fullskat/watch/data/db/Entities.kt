@@ -1,5 +1,6 @@
 package com.fullskat.watch.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -35,4 +36,6 @@ data class MessageEntity(
     val createdAt: Long,
     /** True while the assistant answer is still streaming or failed midway. */
     val pending: Boolean = false,
+    /** The model's reasoning summary for an assistant message; empty when the model sent none. */
+    @ColumnInfo(defaultValue = "") val thinking: String = "",
 )

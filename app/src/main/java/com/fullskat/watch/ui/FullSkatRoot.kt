@@ -17,6 +17,7 @@ import com.fullskat.watch.LaunchRequest
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.dialogs.DialogsScreen
 import com.fullskat.watch.ui.pair.PairScreen
+import com.fullskat.watch.ui.settings.EffortScreen
 import com.fullskat.watch.ui.settings.ModelScreen
 import com.fullskat.watch.ui.settings.SettingsScreen
 import com.fullskat.watch.ui.theme.FullSkatTheme
@@ -27,6 +28,7 @@ object Routes {
     const val PAIR = "pair"
     const val SETTINGS = "settings"
     const val MODEL = "model"
+    const val EFFORT = "effort"
     const val CHAT = "chat/{dialogId}?listen={listen}"
     fun chat(dialogId: String, listen: Boolean) = "chat/$dialogId?listen=$listen"
 }
@@ -94,12 +96,16 @@ fun FullSkatRoot(
                     SettingsScreen(
                         vm = vm,
                         onModel = { nav.navigate(Routes.MODEL) },
+                        onEffort = { nav.navigate(Routes.EFFORT) },
                         onRepair = { nav.navigate(Routes.PAIR) },
                         onUnpaired = { nav.navigate(Routes.PAIR) { popUpTo(0) { inclusive = true } } },
                     )
                 }
                 composable(Routes.MODEL) {
                     ModelScreen(vm = vm, onDone = { nav.popBackStack() })
+                }
+                composable(Routes.EFFORT) {
+                    EffortScreen(vm = vm, onDone = { nav.popBackStack() })
                 }
             }
         }

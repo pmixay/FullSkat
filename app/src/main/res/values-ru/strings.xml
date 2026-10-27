@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="complication_short">Спросить</string>
     <string name="tile_title">Спросить FullSkat</string>
     <string name="tile_hint">Нажмите, чтобы спросить</string>
     <plurals name="tile_dialogs_today">
@@ -22,26 +21,16 @@
     <string name="settings">Настройки</string>
     <string name="delete_dialog_q">Удалить этот диалог?</string>
     <string name="untitled">Без названия</string>
-
-    <string name="pair_title">Подключение</string>
-    <string name="pair_server">Адрес сервера</string>
-    <string name="pair_server_hint">https://example.com</string>
     <string name="pair_passcode">Код доступа</string>
     <string name="pair_connect">Подключить</string>
     <string name="pair_set_first">Первые часы: этот код теперь код сервера.</string>
     <string name="pair_wrong">Неверный код</string>
     <string name="pair_locked">Слишком много попыток. Попробуйте позже.</string>
     <string name="pair_unreachable">Сервер недоступен</string>
-    <string name="pair_bad_url">Введите корректный адрес https://</string>
-    <string name="next">Далее</string>
     <string name="back">Назад</string>
     <string name="done">Готово</string>
 
     <string name="settings_model">Модель</string>
-    <string name="settings_language">Язык речи</string>
-    <string name="lang_auto">Авто</string>
-    <string name="lang_ru">Русский</string>
-    <string name="lang_en">Английский</string>
     <string name="settings_haptics">Вибрация</string>
     <string name="settings_assistant">Сделать ассистентом</string>
     <string name="settings_assistant_desc">Откроет системные настройки. Выберите FullSkat как приложение цифрового ассистента.</string>
@@ -55,5 +44,18 @@
     <string name="err_token">Сессия истекла. Подключитесь заново в настройках.</string>
     <string name="err_rate">Слишком много запросов. Подождите немного.</string>
     <string name="err_server">Ошибка сервера</string>
+    <string name="err_speech">Не удалось запустить распознавание речи</string>
     <string name="err_nothing_heard">Ничего не услышал</string>
+    <string name="thinking_title">Размышления</string>
+    <string name="expand">Развернуть</string>
+    <string name="collapse">Свернуть</string>
+    <string name="scroll_to_latest">К последнему сообщению</string>
+    <string name="settings_effort">Глубина размышлений</string>
+    <string name="settings_web_search">Поиск в интернете</string>
+    <string name="effort_default">По умолчанию</string>
+    <string name="effort_low">Низкая</string>
+    <string name="effort_medium">Средняя</string>
+    <string name="effort_high">Высокая</string>
+    <string name="effort_xhigh">Очень высокая</string>
+    <string name="effort_max">Максимальная</string>
 </resources>
