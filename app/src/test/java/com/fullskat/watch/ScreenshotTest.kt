@@ -45,7 +45,7 @@ import java.io.File
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [36], qualifiers = "w240dp-h240dp-xhdpi-round")
+@Config(sdk = [36], qualifiers = "w240dp-h240dp-round-xhdpi")
 class ScreenshotTest {
     companion object {
         @BeforeClass
