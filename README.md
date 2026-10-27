@@ -63,7 +63,7 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 ## CI
 
-`.github/workflows/build-apk.yml` builds the release APK on every push to `main`, on
+`.github/workflows/build-apk.yml` builds the release APK on every push to `main` and `claude/**` branches, on
 tags `v*` (push only: no pull-request or manual triggers). The uploaded artifact `fullskat-watch-apk` is
 a single zip, compressed at level 9, containing only `fullskat-watch.apk`. To sign with
 your own key add the repository secrets `FULLSKAT_KEYSTORE_B64` (base64 of the `.jks`),
