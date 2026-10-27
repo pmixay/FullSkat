@@ -4,7 +4,7 @@ The watch app (client) talks to a small server that holds the provider keys
 (Claude API or OpenRouter), recognizes speech, and forwards chat requests. The server stores nothing about
 dialogs; dialogs live on the watch.
 
-Base URL: the app is built for a single fixed server, `https://skat.abuz.lol`; the user
+Base URL: the app is built for a single fixed server, `https://skat.arbuz.lol`; the user
 cannot change it. (Self-hosting means changing `ServerEndpoint.URL` in the app.)
 
 All endpoints except `POST /v1/pair` and `GET /healthz` require
