@@ -80,8 +80,9 @@ token was revoked (state file reset).
   never on when the operator disabled it.
 * The model may search the web (`WEB_SEARCH`, default on); the search itself is
   transparent to the client.
-* The server prepends its own system prompt (plain text only, no LaTeX, no
-  Markdown, short answers, reply in the language of the user, watch context).
+* The server prepends its own system prompt (short plain-text answers by default, in the
+  language of the user; Markdown, LaTeX in `$...$` / `$$...$$` and fenced code blocks only when
+  they really help, because the watch renders them; watch context).
 * The server keeps the last 24 messages / 12k characters of history.
 * Response: `text/event-stream`. Events:
   * `event: thinking`  `data: {"text": "partial piece"}` (many) - the model's reasoning

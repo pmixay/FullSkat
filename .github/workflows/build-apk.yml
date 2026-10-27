@@ -62,7 +62,7 @@ jobs:
       - name: Screenshots
         if: ${{ startsWith(github.ref, 'refs/heads/claude/') }}
         continue-on-error: true
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' -Pscreenshots --no-daemon --console=plain
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' --tests 'com.fullskat.watch.RichTextScreenshotTest' -Pscreenshots --no-daemon --console=plain
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() && startsWith(github.ref, 'refs/heads/claude/') }}

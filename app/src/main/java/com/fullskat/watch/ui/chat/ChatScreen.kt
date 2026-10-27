@@ -73,6 +73,7 @@ import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
 import com.fullskat.watch.ui.components.errorText
+import com.fullskat.watch.ui.rich.RichText
 import com.fullskat.watch.ui.theme.Tokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -251,18 +252,30 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
     ) {
         if (showThinking) ThinkingBlock(thinking = thinking, live = m.pending && text.isBlank())
         if (showBubble) {
-            Text(
-                text = text.ifBlank { "…" },
-                color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
-                style = MaterialTheme.typography.bodyLarge,
-                fontSize = 16.sp,
-                lineHeight = 21.sp,
-                modifier = Modifier
-                    .fillMaxWidth(if (isUser) 0.86f else 1f)
-                    .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
-                    .background(if (isUser) Tokens.userBubble else Tokens.assistantBubble, shape)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+            if (isUser || text.isBlank()) {
+                Text(
+                    text = text.ifBlank { "…" },
+                    color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontSize = 16.sp,
+                    lineHeight = 21.sp,
+                    modifier = Modifier
+                        .fillMaxWidth(if (isUser) 0.86f else 1f)
+                        .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
+                        .background(if (isUser) Tokens.userBubble else Tokens.assistantBubble, shape)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            } else {
+                // Assistant answers may carry Markdown, LaTeX math and code.
+                RichText(
+                    markdown = text,
+                    color = Tokens.onAssistantBubble,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Tokens.assistantBubble, shape)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                )
+            }
         }
     }
 }
