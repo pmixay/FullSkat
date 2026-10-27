@@ -32,14 +32,14 @@ class ApiClient {
 
     private val json = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun pair(serverUrl: String, passcode: String, deviceId: String, deviceName: String): PairResult =
+    suspend fun pair(passcode: String, deviceId: String, deviceName: String): PairResult =
         withContext(Dispatchers.IO) {
             val body = JSONObject()
                 .put("passcode", passcode)
                 .put("device_id", deviceId)
                 .put("device_name", deviceName)
             val req = Request.Builder()
-                .url("${serverUrl.trimEnd('/')}/v1/pair")
+                .url("${ServerEndpoint.URL}/v1/pair")
                 .post(body.toString().toRequestBody(json))
                 .build()
             execute(req).use { resp ->
@@ -52,6 +52,7 @@ class ApiClient {
                             firstSetup = o.optBoolean("first_setup", resp.code == 201),
                             serverName = o.optString("server_name").ifBlank { null },
                             model = o.optString("model").ifBlank { null },
+                            models = o.optStrings("models"),
                         )
                     }
                     401 -> throw ApiException.WrongPasscode()
@@ -71,7 +72,7 @@ class ApiClient {
             val text = resp.body.string()
             when (resp.code) {
                 200 -> JSONObject(text).let {
-                    MeResult(it.optString("model").ifBlank { null }, it.optString("device_name").ifBlank { null })
+                    MeResult(it.optString("model").ifBlank { null }, it.optStrings("models"), it.optString("device_name").ifBlank { null })
                 }
                 401 -> throw ApiException.Unauthorized(errorMessage(text))
                 429 -> throw ApiException.RateLimited(resp.retryAfter())
@@ -153,6 +154,11 @@ class ApiClient {
         http.newCall(req).execute()
     } catch (e: IOException) {
         throw ApiException.Network(e.message ?: "network")
+    }
+
+    private fun JSONObject.optStrings(name: String): List<String> {
+        val a = optJSONArray(name) ?: return emptyList()
+        return (0 until a.length()).mapNotNull { a.optString(it).ifBlank { null } }
     }
 
     private fun Response.retryAfter(): Int = header("Retry-After")?.toIntOrNull() ?: 30

@@ -3,14 +3,14 @@
 A voice assistant for Wear OS. Tap the mic (or hold the side key when FullSkat is the
 default assistant), speak Russian or English, watch the words appear while you are still
 talking, and read a short plain-text answer. Dialogs stay on the watch; a small server
-you host holds the OpenRouter key and does the speech recognition.
+you host holds the API keys and does the speech recognition.
 
 * **Watch app** (`app/`): Kotlin, Jetpack Compose for Wear OS (Material 3), Room,
   DataStore, OkHttp. Target device: Galaxy Watch7 (SM-L305F), Wear OS 6/7, `compileSdk 37`,
   `targetSdk 37`, `minSdk 33`.
 * **Server** (`server/`): Python, FastAPI. Pairing passcode, per-token rate limits,
-  streaming speech recognition, chat relay to OpenRouter (default model
-  `openai/gpt-5.6-luna`, reasoning effort `high`). See [`server/README.md`](server/README.md).
+  streaming speech recognition, chat relay to the Claude API (default, model
+  `claude-haiku-5-5`, with web search) or OpenRouter. See [`server/README.md`](server/README.md).
 * **Protocol** ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): pairing, SSE chat, WebSocket listening.
 
 ## What the watch app does
@@ -23,8 +23,9 @@ you host holds the OpenRouter key and does the speech recognition.
 | Default assistant | `VoiceInteractionService` + `RecognitionService`. Choose FullSkat in *Settings → Apps → Default apps → Digital assistant app* (or Settings → Set as assistant inside the app). The assist gesture opens a fresh dialog and starts listening at once. |
 | Tile | Swipe-left tile with a big amber mic and today's dialog count. |
 | Complication | Round watch-face widget (monochromatic image, small image or short text) that starts a new dialog. |
-| Pairing | Enter the server address, then a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
-| Models | Settings → Model: GPT-5.6 Luna (default), Luna Pro, GPT-5.5, Gemini 3.5 Flash, Claude Sonnet 5 (server allowlist decides). |
+| Pairing | The app is fixed to `https://skat.abuz.lol` (there is no address field). Enter a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
+| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1. The list comes from the server's allowlist, so it follows the provider the server runs (Claude API by default, or OpenRouter). |
+| Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). |
 | Languages | Speech language Auto / Russian / English. UI is localized in English and Russian. |
 
 ### Power notes

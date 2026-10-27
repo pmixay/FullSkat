@@ -1,4 +1,4 @@
-"""Streaming chat completions through OpenRouter."""
+"""Streaming chat completions through the Claude API (default) or OpenRouter."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
+import anthropic
 import httpx
 
 from .config import Settings
@@ -15,6 +16,11 @@ log = logging.getLogger(__name__)
 
 REFERER = "https://github.com/pmixay/FullSkat"
 TITLE = "FullSkat"
+
+# Basic server-side web search: works on every Claude model, no beta header.
+WEB_SEARCH_TOOL = "web_search_20250305"
+# A server-side tool loop that hits its iteration cap ends with pause_turn; resume it a few times at most.
+MAX_PAUSE_TURNS = 4
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,8 @@ class OpenRouterLLM:
         effort = self._settings.reasoning_effort
         if effort:
             body["reasoning"] = {"effort": effort}
+        if self._settings.web_search:
+            body["plugins"] = [{"id": "web", "max_results": self._settings.web_search_max_uses}]
         return body
 
     async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Usage]:
@@ -150,3 +158,86 @@ class OpenRouterLLM:
         except httpx.HTTPError as exc:
             log.warning("OpenRouter request failed: %s", exc)
             raise LLMError("upstream_error", f"could not reach the model provider: {exc}") from exc
+
+
+def _anthropic_conversation(messages: list[dict[str, str]]) -> tuple[str, list[dict[str, str]]]:
+    """Split OpenAI-style messages into the system prompt and a conversation that starts with a user turn."""
+    system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+    conversation = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] != "system"]
+    while conversation and conversation[0]["role"] != "user":
+        conversation.pop(0)
+    return system, conversation
+
+
+class AnthropicLLM:
+    """Streams text deltas from the Claude API through the official SDK."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        options: dict[str, Any] = {"timeout": anthropic.Timeout(120.0, connect=10.0)}
+        if settings.anthropic_api_key:
+            options["api_key"] = settings.anthropic_api_key
+        if settings.anthropic_base_url:
+            options["base_url"] = settings.anthropic_base_url
+        self._client = anthropic.AsyncAnthropic(**options)
+
+    async def aclose(self) -> None:
+        await self._client.close()
+
+    def _request(self, system: str, conversation: list[dict[str, Any]], model: str) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "model": model,
+            "max_tokens": self._settings.anthropic_max_tokens,
+            "system": system,
+            "messages": conversation,
+        }
+        if self._settings.anthropic_effort:
+            request["output_config"] = {"effort": self._settings.anthropic_effort}
+        if self._settings.web_search:
+            request["tools"] = [
+                {"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": self._settings.web_search_max_uses}
+            ]
+        return request
+
+    async def stream(self, messages: list[dict[str, str]], model: str) -> AsyncIterator[str | Usage]:
+        """Yield text deltas (str) and a final Usage item. Raises LLMError like OpenRouterLLM."""
+        if not self._settings.anthropic_api_key:
+            raise LLMError("upstream_auth", "ANTHROPIC_API_KEY is not configured on the server")
+        system, conversation = _anthropic_conversation(messages)
+        if not conversation:
+            raise LLMError("upstream_error", "no user message to answer")
+        request = self._request(system, conversation, model)
+        prompt_tokens = completion_tokens = 0
+        try:
+            for _ in range(MAX_PAUSE_TURNS):
+                async with self._client.messages.stream(**request) as stream:
+                    async for text in stream.text_stream:
+                        yield text
+                    final = await stream.get_final_message()
+                usage = final.usage
+                prompt_tokens += (
+                    usage.input_tokens
+                    + (usage.cache_read_input_tokens or 0)
+                    + (usage.cache_creation_input_tokens or 0)
+                )
+                completion_tokens += usage.output_tokens
+                if final.stop_reason == "refusal":
+                    raise LLMError("upstream_error", "the model declined to answer this request")
+                if final.stop_reason != "pause_turn":
+                    break
+                # Resume the paused server-side tool loop: send the assistant turn back as it is.
+                request["messages"] = [*request["messages"], {"role": "assistant", "content": final.content}]
+        except anthropic.APIStatusError as exc:
+            log.warning("Anthropic returned %s: %s", exc.status_code, exc.message)
+            raise LLMError(error_code_for_status(exc.status_code), exc.message or "upstream request failed") from exc
+        except anthropic.APIConnectionError as exc:
+            log.warning("Anthropic request failed: %s", exc)
+            raise LLMError("upstream_error", f"could not reach the model provider: {exc}") from exc
+        yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
+
+def create_llm(settings: Settings, client: httpx.AsyncClient) -> AnthropicLLM | OpenRouterLLM:
+    """Build the chat provider named by settings.llm_provider. `client` is the shared outbound HTTP client."""
+    if settings.llm_provider == "anthropic":
+        return AnthropicLLM(settings)
+    return OpenRouterLLM(settings, client)

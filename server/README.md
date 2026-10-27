@@ -1,15 +1,15 @@
 # FullSkat server
 
 The server half of FullSkat, a Wear OS voice assistant. The watch sends audio and chat
-requests; the server holds the OpenRouter key, recognizes speech and relays chat
-completions. It stores no dialogs, only a passcode hash and the tokens it has issued.
+requests; the server holds the API keys, recognizes speech and relays chat
+completions to the Claude API (default) or OpenRouter. It stores no dialogs, only a passcode hash and the tokens it has issued.
 The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 ## Quick start with Docker
 
 ```sh
 cd server
-cp .env.example .env          # set OPENROUTER_API_KEY at minimum
+cp .env.example .env          # set ANTHROPIC_API_KEY (+ OPENROUTER_API_KEY for the default speech backend)
 docker compose up -d --build
 curl http://localhost:8080/healthz   # {"ok": true, "paired": false}
 ```
@@ -71,7 +71,7 @@ location block.
 
 | Backend | Setup | Notes |
 | --- | --- | --- |
-| `openrouter` (default) | none beyond `OPENROUTER_API_KEY` | Sends WAV to an audio-capable chat model (`STT_OPENROUTER_MODEL`, default `google/gemini-3.5-flash-lite`). Good Russian and English, no local resources. |
+| `openrouter` (default) | none beyond `OPENROUTER_API_KEY` (the Claude API cannot transcribe audio) | Sends WAV to an audio-capable chat model (`STT_OPENROUTER_MODEL`, default `google/gemini-3.5-flash-lite`). Good Russian and English, no local resources. |
 | `openai` | `STT_OPENAI_BASE_URL`, `STT_OPENAI_API_KEY`, `STT_OPENAI_MODEL` | Any OpenAI-compatible `/audio/transcriptions` endpoint: OpenAI `gpt-4o-transcribe`, Groq `whisper-large-v3-turbo`, a self-hosted server, ... |
 | `faster_whisper` | `pip install "fullskat-server[whisper]"` | Local `faster-whisper` (`WHISPER_MODEL`, `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`). Lowest latency on a GPU box; the model downloads on first use. |
 
@@ -92,17 +92,38 @@ Rejections are `429` with a `Retry-After` header (or an `error` frame with
 
 ## Chat models
 
-`OPENROUTER_MODEL` is the default; the watch may request any model listed in
-`OPENROUTER_ALLOWED_MODELS`. `OPENROUTER_REASONING_EFFORT` (default `high`) is sent as
-`{"reasoning": {"effort": ...}}`; set it empty to omit it for models that do not support
-reasoning. History sent upstream is trimmed to the last `MAX_HISTORY_MESSAGES` /
-`MAX_HISTORY_CHARS`, and answers are capped at `MAX_COMPLETION_TOKENS`.
+`LLM_PROVIDER` picks the chat backend:
+
+* `anthropic` (default): the Claude API through the official SDK. `ANTHROPIC_MODEL`
+  (default `claude-haiku-5-5`) is the default model and the watch may request any model in
+  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1). `ANTHROPIC_EFFORT`
+  (default `medium`) is sent as `output_config.effort`; set it empty to omit it.
+  `ANTHROPIC_MAX_TOKENS` caps one answer including thinking tokens.
+* `openrouter`: `OPENROUTER_MODEL` is the default; the watch may request any model listed in
+  `OPENROUTER_ALLOWED_MODELS`. `OPENROUTER_REASONING_EFFORT` (default `high`) is sent as
+  `{"reasoning": {"effort": ...}}`; set it empty to omit it for models that do not support
+  reasoning.
+
+The server tells the watch which models are allowed (`models` in the pairing and `/v1/me`
+responses), so the model picker always matches the active provider.
+
+History sent upstream is trimmed to the last `MAX_HISTORY_MESSAGES` /
+`MAX_HISTORY_CHARS`.
+
+### Web search
+
+`WEB_SEARCH=true` (default) lets the model search the web when a question needs fresh facts
+(news, weather, prices, scores). With the Claude API this is the `web_search` server tool, at
+most `WEB_SEARCH_MAX_USES` searches per answer (default 3); it has to be enabled for your
+organization in the Claude Console, and each search is billed on top of tokens. With
+OpenRouter the `web` plugin is used. Set `WEB_SEARCH=false` to turn it off.
 
 ## Cost notes
 
 * Every chat request sends the system prompt plus up to 12k characters of history;
-  reasoning models with `effort=high` can spend several times more output tokens than
-  the visible answer. Use `google/gemini-3.5-flash` or a lower effort for cheaper chats.
+  thinking models with a high effort can spend several times more output tokens than
+  the visible answer. The default is the cheap Haiku with `medium` effort; web searches
+  add a per-search fee and the retrieved pages count as input tokens.
 * The `openrouter` speech backend sends the whole utterance for every partial (about
   once per second while you speak) plus once for the final: a 10 s utterance costs
   roughly ten short audio requests. Raise `PARTIAL_INTERVAL_MS` to reduce this, or use

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 from .auth import InvalidPasscode, StateStore, TokenRecord, token_hash
 from .config import Settings, load_settings
 from .listen import CLOSE_POLICY_VIOLATION, ListenSession
-from .llm import LLMError, OpenRouterLLM, Usage, trim_history
+from .llm import LLMError, Usage, create_llm, trim_history
 from .prompts import build_system_prompt
 from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
 from .stt import STTBackend, create_stt
@@ -111,14 +111,19 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info(
-            "FullSkat server ready: model=%s stt=%s data_dir=%s",
-            settings.openrouter_model,
+            "FullSkat server ready: provider=%s model=%s web_search=%s stt=%s data_dir=%s",
+            settings.llm_provider,
+            settings.chat_model,
+            settings.web_search,
             settings.stt_backend,
             settings.data_dir,
         )
         try:
             yield
         finally:
+            close_llm = getattr(app.state.llm, "aclose", None)
+            if close_llm is not None:
+                await close_llm()
             await app.state.http.aclose()
 
     app = FastAPI(title="FullSkat server", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -126,7 +131,7 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
     app.state.settings = settings
     app.state.http = http
     app.state.store = StateStore(settings.data_dir / "state.json")
-    app.state.llm = OpenRouterLLM(settings, http)
+    app.state.llm = create_llm(settings, http)
     app.state.stt = stt or create_stt(settings, http)
     app.state.pair_limiter = PairLimiter(settings.pair_per_min, settings.pair_lock_failures, settings.pair_lock_minutes)
     app.state.chat_limiter = SlidingWindowLimiter(settings.chat_per_min, settings.chat_per_day)
@@ -191,7 +196,8 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
             "token": result.token,
             "first_setup": result.first_setup,
             "server_name": settings.server_name,
-            "model": settings.openrouter_model,
+            "model": settings.chat_model,
+            "models": settings.allowed_models,
         }
         return JSONResponse(payload, status_code=201 if result.first_setup else 200)
 
@@ -201,7 +207,8 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
         return {
             "device_id": record.device_id,
             "device_name": record.device_name,
-            "model": settings.openrouter_model,
+            "model": settings.chat_model,
+            "models": settings.allowed_models,
             "limits": _limits(settings),
         }
 
@@ -221,7 +228,7 @@ def create_app(settings: Settings | None = None, stt: STTBackend | None = None) 
             body = ChatRequest.model_validate_json(raw)
         except ValidationError as exc:
             raise ApiError(400, "invalid_request", _describe_validation(exc)) from exc
-        model = body.model or settings.openrouter_model
+        model = body.model or settings.chat_model
         if model not in settings.allowed_models:
             raise ApiError(400, "model_not_allowed", f"model {model!r} is not in the server allowlist")
 

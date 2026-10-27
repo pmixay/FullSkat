@@ -22,18 +22,12 @@
     <string name="settings">Настройки</string>
     <string name="delete_dialog_q">Удалить этот диалог?</string>
     <string name="untitled">Без названия</string>
-
-    <string name="pair_title">Подключение</string>
-    <string name="pair_server">Адрес сервера</string>
-    <string name="pair_server_hint">https://example.com</string>
     <string name="pair_passcode">Код доступа</string>
     <string name="pair_connect">Подключить</string>
     <string name="pair_set_first">Первые часы: этот код теперь код сервера.</string>
     <string name="pair_wrong">Неверный код</string>
     <string name="pair_locked">Слишком много попыток. Попробуйте позже.</string>
     <string name="pair_unreachable">Сервер недоступен</string>
-    <string name="pair_bad_url">Введите корректный адрес https://</string>
-    <string name="next">Далее</string>
     <string name="back">Назад</string>
     <string name="done">Готово</string>
 

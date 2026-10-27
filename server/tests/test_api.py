@@ -43,7 +43,7 @@ class FakeLLM:
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    return Settings(_env_file=None, data_dir=tmp_path, openrouter_api_key="test-key")
+    return Settings(_env_file=None, data_dir=tmp_path, anthropic_api_key="test-key", openrouter_api_key="test-key")
 
 
 @pytest.fixture
@@ -91,7 +91,8 @@ async def test_pair_flow_201_200_401(client: AsyncClient) -> None:
     body = first.json()
     assert body["first_setup"] is True
     assert body["server_name"] == "FullSkat"
-    assert body["model"] == "openai/gpt-5.6-luna"
+    assert body["model"] == "claude-haiku-5-5"
+    assert body["models"][0] == "claude-haiku-5-5"
     assert len(body["token"]) >= 43
 
     second = await client.post("/v1/pair", json={**PAIR, "device_id": "dev-2"})
@@ -153,7 +154,8 @@ async def test_me(client: AsyncClient) -> None:
     assert response.json() == {
         "device_id": "dev-1",
         "device_name": "Galaxy Watch7",
-        "model": "openai/gpt-5.6-luna",
+        "model": "claude-haiku-5-5",
+        "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"],
         "limits": {"chat_per_min": 20, "listen_per_min": 40, "chat_per_day": 500, "listen_per_day": 1000},
     }
 
@@ -188,12 +190,12 @@ async def test_chat_streams_deltas_and_done(client: AsyncClient, app: FastAPI) -
     assert events[0][1] == {"text": "Hel"}
     assert events[-1][1] == {
         "text": "Hello world",
-        "model": "openai/gpt-5.6-luna",
+        "model": "claude-haiku-5-5",
         "usage": {"prompt_tokens": 10, "completion_tokens": 3},
     }
 
     (messages, model), = app.state.llm.requests
-    assert model == "openai/gpt-5.6-luna"
+    assert model == "claude-haiku-5-5"
     assert messages[0]["role"] == "system"
     assert "LaTeX" in messages[0]["content"]
     assert "User locale: ru-RU" in messages[0]["content"]
@@ -209,9 +211,9 @@ async def test_chat_model_allowlist_and_errors(client: AsyncClient, app: FastAPI
     assert denied.status_code == 400
     assert denied.json()["error"] == "model_not_allowed"
 
-    ok = await client.post("/v1/chat", json={"messages": messages, "model": "openai/gpt-5.5"}, headers=headers)
+    ok = await client.post("/v1/chat", json={"messages": messages, "model": "claude-sonnet-5-5"}, headers=headers)
     assert ok.status_code == 200
-    assert app.state.llm.requests[-1][1] == "openai/gpt-5.5"
+    assert app.state.llm.requests[-1][1] == "claude-sonnet-5-5"
 
     invalid = await client.post("/v1/chat", json={"messages": []}, headers=headers)
     assert invalid.status_code == 400

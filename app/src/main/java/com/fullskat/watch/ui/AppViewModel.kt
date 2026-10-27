@@ -13,6 +13,7 @@ import com.fullskat.watch.data.prefs.SpeechLang
 import com.fullskat.watch.domain.AssistantTurn
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.tile.FullSkatTileService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -67,13 +68,32 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun cancelTurn() = turn.cancel()
     fun dismissError() = turn.dismissError()
 
-    fun pair(serverUrl: String, passcode: String, deviceName: String) {
+    init {
+        refreshServerInfo()
+    }
+
+    /** Learns the server's current default model and allowlist (they depend on the provider it runs). */
+    private fun refreshServerInfo() {
+        viewModelScope.launch {
+            val cfg = container.settings.current()
+            val token = cfg.token ?: return@launch
+            try {
+                val me = container.api.me(cfg.serverUrl, token)
+                container.settings.saveServerModels(me.model, me.models)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                // Offline, token or parsing problems surface on the first turn; the cached list stays usable.
+            }
+        }
+    }
+
+    fun pair(passcode: String, deviceName: String) {
         viewModelScope.launch {
             _pairState.value = PairUiState.Busy
             try {
                 val deviceId = container.settings.deviceId()
-                val r = container.api.pair(serverUrl, passcode, deviceId, deviceName)
-                container.settings.savePairing(serverUrl, r.token, r.serverName, r.model)
+                val r = container.api.pair(passcode, deviceId, deviceName)
+                container.settings.savePairing(r.token, r.serverName, r.model, r.models)
                 _pairState.value = PairUiState.Success(r.firstSetup)
             } catch (e: ApiException) {
                 _pairState.value = when (e) {
@@ -113,14 +133,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     companion object {
-        /** Models offered in the picker. The server validates against its own allowlist. */
+        /** Fallback picker list until the server has reported its allowlist. The server validates every request. */
         val MODELS = listOf(
-            "openai/gpt-5.6-luna",
-            "openai/gpt-5.6-luna-pro",
-            "openai/gpt-5.5",
-            "google/gemini-3.5-flash",
-            "anthropic/claude-sonnet-5",
+            "claude-haiku-5-5",
+            "claude-sonnet-5-5",
+            "claude-opus-5-5",
+            "claude-fable-5-1",
         )
-        const val DEFAULT_MODEL = "openai/gpt-5.6-luna"
+        const val DEFAULT_MODEL = "claude-haiku-5-5"
     }
 }

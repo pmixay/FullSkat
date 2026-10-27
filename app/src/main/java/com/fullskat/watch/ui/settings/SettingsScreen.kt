@@ -32,6 +32,7 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.BuildConfig
 import com.fullskat.watch.R
 import com.fullskat.watch.assistant.FullSkatVoiceInteractionService
+import com.fullskat.watch.data.net.ServerEndpoint
 import com.fullskat.watch.data.prefs.SpeechLang
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.theme.Tokens
@@ -101,7 +102,7 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onRepair: () -> Unit, 
                     onClick = onRepair,
                     modifier = itemModifier,
                     label = { Text(stringResource(R.string.settings_server)) },
-                    secondaryLabel = { Text(cfg.serverUrl.removePrefix("https://"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = { Text(ServerEndpoint.URL.removePrefix("https://"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {
@@ -151,7 +152,10 @@ fun ModelScreen(vm: AppViewModel, onDone: () -> Unit) {
     val cfg = settings ?: return
     val listState = rememberTransformingLazyColumnState()
     val selected = cfg.model ?: cfg.serverModel ?: AppViewModel.DEFAULT_MODEL
-    val models = remember(cfg.serverModel) { (listOf(cfg.serverModel) + AppViewModel.MODELS).filterNotNull().distinct() }
+    val models = remember(cfg.serverModel, cfg.serverModels) {
+        val offered = cfg.serverModels.ifEmpty { AppViewModel.MODELS }
+        (listOf(cfg.serverModel) + offered).filterNotNull().distinct()
+    }
 
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
@@ -165,10 +169,19 @@ fun ModelScreen(vm: AppViewModel, onDone: () -> Unit) {
                         onDone()
                     },
                     modifier = itemModifier,
-                    label = { Text(m.substringAfter('/'), maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    secondaryLabel = { Text(m.substringBefore('/'), fontSize = 11.sp) },
+                    label = { Text(modelName(m), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = { Text(modelVendor(m), fontSize = 11.sp) },
                 )
             }
         }
     }
+}
+
+/** "openai/gpt-5.5" (OpenRouter) -> "gpt-5.5"; Claude API ids such as "claude-haiku-5-5" have no vendor prefix. */
+private fun modelName(id: String): String = id.substringAfter('/')
+
+private fun modelVendor(id: String): String = when {
+    '/' in id -> id.substringBefore('/')
+    id.startsWith("claude") -> "anthropic"
+    else -> ""
 }

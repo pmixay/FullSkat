@@ -81,7 +81,7 @@ jobs:
           path: out/fullskat-watch.apk
           if-no-files-found: error
           compression-level: 9
-          retention-days: 30
+          retention-days: 7
 
       - name: Summary
         run: echo "APK built (${{ steps.apk.outputs.size }}). Download the fullskat-watch-apk artifact; the zip contains only fullskat-watch.apk." >> "$GITHUB_STEP_SUMMARY"

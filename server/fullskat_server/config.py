@@ -12,6 +12,7 @@ DEFAULT_ALLOWED_MODELS = (
     "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
     "google/gemini-3.5-flash,anthropic/claude-sonnet-5"
 )
+DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
 
 class Settings(BaseSettings):
@@ -19,7 +20,22 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # OpenRouter (chat)
+    # Chat provider: "anthropic" (default, Claude API) or "openrouter"
+    llm_provider: Literal["anthropic", "openrouter"] = "anthropic"
+    # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
+    web_search: bool = True
+    web_search_max_uses: int = Field(default=3, ge=1, le=20)
+
+    # Anthropic (chat)
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-5-5"
+    anthropic_effort: str = "medium"
+    anthropic_allowed_models: str = DEFAULT_ANTHROPIC_ALLOWED_MODELS
+    anthropic_base_url: str = ""
+    # Upper bound for one answer including adaptive thinking tokens.
+    anthropic_max_tokens: int = Field(default=4096, ge=1)
+
+    # OpenRouter (chat, and the default speech backend)
     openrouter_api_key: str = ""
     openrouter_model: str = "openai/gpt-5.6-luna"
     openrouter_reasoning_effort: str = "high"
@@ -64,17 +80,23 @@ class Settings(BaseSettings):
     trust_proxy_headers: bool = False
     log_level: str = "INFO"
 
-    @field_validator("openrouter_reasoning_effort", mode="before")
+    @field_validator("openrouter_reasoning_effort", "anthropic_effort", mode="before")
     @classmethod
     def _blank_effort_means_none(cls, value: object) -> str:
         return "" if value is None else str(value).strip()
 
     @property
+    def chat_model(self) -> str:
+        """Default chat model of the active provider."""
+        return self.anthropic_model if self.llm_provider == "anthropic" else self.openrouter_model
+
+    @property
     def allowed_models(self) -> list[str]:
-        """Allowlist as a list; the default model is always allowed."""
-        models = [m.strip() for m in self.openrouter_allowed_models.split(",") if m.strip()]
-        if self.openrouter_model not in models:
-            models.insert(0, self.openrouter_model)
+        """Allowlist of the active provider as a list; the default model is always allowed."""
+        raw = self.anthropic_allowed_models if self.llm_provider == "anthropic" else self.openrouter_allowed_models
+        models = [m.strip() for m in raw.split(",") if m.strip()]
+        if self.chat_model not in models:
+            models.insert(0, self.chat_model)
         return models
 
     @property

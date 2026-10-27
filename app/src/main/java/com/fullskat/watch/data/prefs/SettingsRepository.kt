@@ -2,11 +2,13 @@ package com.fullskat.watch.data.prefs
 
 import android.content.Context
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.fullskat.watch.data.net.ServerEndpoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,11 +24,12 @@ data class Settings(
     val deviceId: String,
     val model: String?,
     val serverModel: String?,
+    val serverModels: List<String>,
     val serverName: String?,
     val lang: SpeechLang,
     val haptics: Boolean,
 ) {
-    val paired: Boolean get() = serverUrl.isNotBlank() && !token.isNullOrBlank()
+    val paired: Boolean get() = !token.isNullOrBlank()
 }
 
 class SettingsRepository(private val context: Context) {
@@ -36,6 +39,7 @@ class SettingsRepository(private val context: Context) {
         val DEVICE_ID = stringPreferencesKey("device_id")
         val MODEL = stringPreferencesKey("model")
         val SERVER_MODEL = stringPreferencesKey("server_model")
+        val SERVER_MODELS = stringPreferencesKey("server_models")
         val SERVER_NAME = stringPreferencesKey("server_name")
         val LANG = stringPreferencesKey("lang")
         val HAPTICS = booleanPreferencesKey("haptics")
@@ -43,11 +47,13 @@ class SettingsRepository(private val context: Context) {
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
         Settings(
-            serverUrl = p[Keys.SERVER_URL].orEmpty(),
-            token = p[Keys.TOKEN_ENC]?.let(KeystoreCrypto::decrypt),
+            serverUrl = ServerEndpoint.URL,
+            // A token issued by a server other than the fixed one (older versions let the user type any address) is useless.
+            token = p[Keys.TOKEN_ENC]?.takeIf { p[Keys.SERVER_URL] == ServerEndpoint.URL }?.let(KeystoreCrypto::decrypt),
             deviceId = p[Keys.DEVICE_ID].orEmpty(),
             model = p[Keys.MODEL],
             serverModel = p[Keys.SERVER_MODEL],
+            serverModels = p[Keys.SERVER_MODELS]?.lines()?.filter { it.isNotBlank() }.orEmpty(),
             serverName = p[Keys.SERVER_NAME],
             lang = p[Keys.LANG]?.let { v -> SpeechLang.entries.firstOrNull { it.wire == v } } ?: SpeechLang.AUTO,
             haptics = p[Keys.HAPTICS] ?: true,
@@ -65,12 +71,26 @@ class SettingsRepository(private val context: Context) {
         return id
     }
 
-    suspend fun savePairing(serverUrl: String, token: String, serverName: String?, serverModel: String?) {
+    suspend fun savePairing(token: String, serverName: String?, serverModel: String?, serverModels: List<String>) {
         context.dataStore.edit {
-            it[Keys.SERVER_URL] = serverUrl.trimEnd('/')
+            it[Keys.SERVER_URL] = ServerEndpoint.URL
             it[Keys.TOKEN_ENC] = KeystoreCrypto.encrypt(token)
             if (serverName != null) it[Keys.SERVER_NAME] = serverName
-            if (serverModel != null) it[Keys.SERVER_MODEL] = serverModel
+            applyServerModels(it, serverModel, serverModels)
+        }
+    }
+
+    /** Stores the server's default model and allowlist; drops a personal choice the server no longer offers. */
+    suspend fun saveServerModels(serverModel: String?, serverModels: List<String>) {
+        context.dataStore.edit { applyServerModels(it, serverModel, serverModels) }
+    }
+
+    private fun applyServerModels(prefs: MutablePreferences, serverModel: String?, serverModels: List<String>) {
+        if (serverModel != null) prefs[Keys.SERVER_MODEL] = serverModel
+        if (serverModels.isNotEmpty()) {
+            prefs[Keys.SERVER_MODELS] = serverModels.joinToString("\n")
+            val chosen = prefs[Keys.MODEL]
+            if (chosen != null && chosen !in serverModels) prefs.remove(Keys.MODEL)
         }
     }
 

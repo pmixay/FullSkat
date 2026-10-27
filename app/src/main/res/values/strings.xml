@@ -23,18 +23,12 @@
     <string name="settings">Settings</string>
     <string name="delete_dialog_q">Delete this dialog?</string>
     <string name="untitled">Untitled</string>
-
-    <string name="pair_title">Connect</string>
-    <string name="pair_server">Server address</string>
-    <string name="pair_server_hint">https://example.com</string>
     <string name="pair_passcode">Passcode</string>
     <string name="pair_connect">Connect</string>
     <string name="pair_set_first">First watch: this passcode is now the server passcode.</string>
     <string name="pair_wrong">Wrong passcode</string>
     <string name="pair_locked">Too many attempts. Try later.</string>
     <string name="pair_unreachable">Server unreachable</string>
-    <string name="pair_bad_url">Enter a valid https:// address</string>
-    <string name="next">Next</string>
     <string name="back">Back</string>
     <string name="done">Done</string>
 

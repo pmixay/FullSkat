@@ -1,10 +1,11 @@
 # FullSkat client–server protocol
 
-The watch app (client) talks to a small server that holds the OpenRouter key,
-recognizes speech, and forwards chat requests. The server stores nothing about
+The watch app (client) talks to a small server that holds the provider keys
+(Claude API or OpenRouter), recognizes speech, and forwards chat requests. The server stores nothing about
 dialogs; dialogs live on the watch.
 
-Base URL: `https://<host>[:port]` (HTTP is allowed only for local testing).
+Base URL: the app is built for a single fixed server, `https://skat.abuz.lol`; the user
+cannot change it. (Self-hosting means changing `ServerEndpoint.URL` in the app.)
 
 All endpoints except `POST /v1/pair` and `GET /healthz` require
 `Authorization: Bearer <token>`.
@@ -23,9 +24,9 @@ status. Rate-limit rejections use status `429` and a `Retry-After` header
 
 * Passcode: 4–8 ASCII digits.
 * If the server has no passcode yet, this call **sets** it and returns
-  `201 {"token": "...", "first_setup": true, "server_name": "...", "model": "..."}`.
+  `201 {"token": "...", "first_setup": true, "server_name": "...", "model": "...", "models": ["..."]}`.
 * Otherwise it verifies the passcode and returns
-  `200 {"token": "...", "first_setup": false, "server_name": "...", "model": "..."}`
+  `200 {"token": "...", "first_setup": false, "server_name": "...", "model": "...", "models": ["..."]}`
   or `401 {"error": "invalid_passcode"}`.
 * Per-IP limit: 5 attempts per minute; 10 consecutive failures lock the IP
   for 15 minutes (`429`, `error: "locked"`).
@@ -35,7 +36,7 @@ status. Rate-limit rejections use status `429` and a `Retry-After` header
 * Re-pairing the same `device_id` replaces its previous token.
 
 `GET /v1/me` → `200 {"device_id": "...", "device_name": "...", "model": "...",
-"limits": {"chat_per_min": 20, "listen_per_min": 40, "chat_per_day": 500,
+"models": ["..."], "limits": {"chat_per_min": 20, "listen_per_min": 40, "chat_per_day": 500,
 "listen_per_day": 1000}}`. Returns `401 {"error": "invalid_token"}` when the
 token was revoked (state file reset).
 
@@ -49,7 +50,7 @@ token was revoked (state file reset).
 {
   "dialog_id": "uuid",
   "locale": "ru-RU",
-  "model": "openai/gpt-5.6-luna",
+  "model": "claude-haiku-5-5",
   "messages": [
     {"role": "user", "content": "Какая завтра погода?"},
     {"role": "assistant", "content": "..."},
@@ -58,10 +59,13 @@ token was revoked (state file reset).
 }
 ```
 
-* `model` is optional; default comes from server config
-  (`OPENROUTER_MODEL`, default `openai/gpt-5.6-luna`, reasoning effort
-  `high`). Only models in the server allowlist are accepted (`400
-  model_not_allowed`).
+* `model` is optional; default comes from server config (`LLM_PROVIDER`:
+  `anthropic` by default with `ANTHROPIC_MODEL=claude-haiku-5-5`, or `openrouter`
+  with `OPENROUTER_MODEL`). `model` and `models` in the pairing / `/v1/me` responses
+  are the default and the allowlist of the active provider; only allowlisted models
+  are accepted (`400 model_not_allowed`).
+* The model may search the web (`WEB_SEARCH`, default on); this is transparent to
+  the client.
 * The server prepends its own system prompt (plain text only, no LaTeX, no
   Markdown, short answers, reply in the language of the user, watch context).
 * The server keeps the last 24 messages / 12k characters of history.
