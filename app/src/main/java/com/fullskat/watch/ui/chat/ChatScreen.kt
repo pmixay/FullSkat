@@ -19,6 +19,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,10 +36,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -67,6 +78,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -213,7 +225,7 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
 
 /** A half circle (56 x 28 dp) whose flat edge rests on the bottom of the display. */
 @Composable
-private fun BottomHalfButton(onClick: () -> Unit, container: androidx.compose.ui.graphics.Color, content: @Composable () -> Unit) {
+private fun BottomHalfButton(onClick: () -> Unit, container: Color, content: @Composable () -> Unit) {
     Box(
         Modifier
             .size(width = 56.dp, height = 28.dp)
@@ -307,15 +319,38 @@ private fun ListeningOverlay(partial: String, level: Float, finishing: Boolean, 
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTap),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = partial.ifBlank { stringResource(R.string.listening) },
-            color = if (partial.isBlank()) Tokens.userText else Tokens.onUserBubble,
-            fontSize = 19.sp,
-            lineHeight = 24.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 5,
-            modifier = Modifier.padding(horizontal = 26.dp).padding(bottom = 18.dp),
-        )
+        // The recognised words stay anchored at the bottom: new lines push the older ones up, and those fade out under the top edge.
+        val scroll = rememberScrollState()
+        LaunchedEffect(scroll) {
+            snapshotFlow { scroll.maxValue }
+                .filter { it != Int.MAX_VALUE }
+                .collect { scroll.animateScrollTo(it, tween(220)) }
+        }
+        Box(
+            Modifier
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 18.dp)
+                .height(124.dp)
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        brush = Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, endY = 30.dp.toPx()),
+                        blendMode = BlendMode.DstIn,
+                    )
+                }
+                .verticalScroll(scroll, enabled = false),
+        ) {
+            Box(Modifier.fillMaxWidth().heightIn(min = 124.dp), contentAlignment = Alignment.Center) {
+                Text(
+                    text = partial.ifBlank { stringResource(R.string.listening) },
+                    color = if (partial.isBlank()) Tokens.userText else Tokens.onUserBubble,
+                    fontSize = 19.sp,
+                    lineHeight = 24.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
         Canvas(Modifier.fillMaxSize()) {
             // Bezel ring: a soft halo whose width follows the voice level, plus a crisp rim.
             val halo = 8.dp.toPx() + animatedLevel * 22.dp.toPx()

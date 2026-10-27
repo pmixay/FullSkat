@@ -202,6 +202,17 @@ class ScreenshotTest {
         shot("09_chat_listening") { ChatScreen(vm, id, autoListen = false) }
     }
 
+    @Test fun chat_listening_long() {
+        val id = seed()
+        val vm = AppViewModel(container)
+        turnOf(vm).value = TurnState.Listening(
+            "Расскажи подробно, как работает рассеяние света в атмосфере, почему небо голубое днём, " +
+                "а на закате становится красным, и чем это отличается от рассеяния на облаках и тумане",
+            0.35f, true,
+        )
+        shot("22_chat_listening_long") { ChatScreen(vm, id, autoListen = false) }
+    }
+
     @Test fun chat_listening_silent() {
         val id = seed()
         val vm = AppViewModel(container)
