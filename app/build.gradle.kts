@@ -103,6 +103,20 @@ android {
         noCompress += "onnx"
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                // ./gradlew :app:testDebugUnitTest -Pscreenshots renders the screens to app/build/screenshots (see ScreenshotTest).
+                if (providers.gradleProperty("screenshots").isPresent) {
+                    it.systemProperty("fullskat.screenshots", "true")
+                    it.systemProperty("roborazzi.test.record", "true")
+                    it.maxHeapSize = "3g"
+                }
+            }
+        }
+    }
+
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
     }
@@ -159,5 +173,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.concurrent.futures)
     debugImplementation(libs.compose.ui.tooling)
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.8.0-alpha01")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.77.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.77.0")
 }
