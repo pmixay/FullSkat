@@ -140,7 +140,7 @@ async def test_me(client: AsyncClient) -> None:
         "device_id": "dev-1",
         "device_name": "Galaxy Watch7",
         "model": "claude-haiku-5-5",
-        "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"],
+        "models": ["claude-haiku-5-5", "claude-sonnet-5-5"],
         "limits": {"chat_per_min": 20, "chat_per_day": 500},
     }
 

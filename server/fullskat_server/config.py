@@ -12,7 +12,7 @@ DEFAULT_ALLOWED_MODELS = (
     "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
     "google/gemini-3.5-flash,anthropic/claude-sonnet-5"
 )
-DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
+DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5"
 
 
 class Settings(BaseSettings):

@@ -79,7 +79,7 @@ Rejections are `429` with a `Retry-After` header. Counters are in memory and res
 
 * `anthropic` (default): the Claude API through the official SDK. `ANTHROPIC_MODEL`
   (default `claude-haiku-5-5`) is the default model and the watch may request any model in
-  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1). `ANTHROPIC_EFFORT`
+  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5). `ANTHROPIC_EFFORT`
   (default `medium`) is sent as `output_config.effort`; set it empty to omit it.
   `ANTHROPIC_MAX_TOKENS` caps one answer including thinking tokens.
 * `openrouter`: `OPENROUTER_MODEL` is the default; the watch may request any model listed in
