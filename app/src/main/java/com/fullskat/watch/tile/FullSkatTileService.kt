@@ -9,6 +9,7 @@ import androidx.wear.protolayout.DimensionBuilders.expand
 import androidx.wear.protolayout.DimensionBuilders.sp
 import androidx.wear.protolayout.LayoutElementBuilders
 import androidx.wear.protolayout.ModifiersBuilders
+import androidx.wear.protolayout.ProtoLayoutScope
 import androidx.wear.protolayout.ResourceBuilders
 import androidx.wear.protolayout.TimelineBuilders
 import androidx.wear.tiles.RequestBuilders
@@ -31,34 +32,33 @@ import kotlinx.coroutines.launch
 class FullSkatTileService : TileService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> =
-        CallbackToFutureAdapter.getFuture { completer ->
+    override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> {
+        // The scope is main-thread only and registers the image resource by itself, so the image is made here.
+        val mic = micImage(requestParams.scope)
+        return CallbackToFutureAdapter.getFuture { completer ->
             scope.launch {
                 val dao = FullSkatApp.container(this@FullSkatTileService).db.dialogDao()
                 val last = runCatching { dao.lastUserMessage() }.getOrNull()
                 val today = runCatching { dao.countDialogsSince(startOfToday()) }.getOrDefault(0)
-                completer.set(buildTile(last, today))
+                completer.set(buildTile(mic, last, today))
             }
             "tile"
         }
+    }
 
-    override fun onTileResourcesRequest(requestParams: RequestBuilders.ResourcesRequest): ListenableFuture<ResourceBuilders.Resources> =
-        CallbackToFutureAdapter.getFuture { completer ->
-            completer.set(
-                ResourceBuilders.Resources.Builder()
-                    .setVersion(RESOURCES_VERSION)
-                    .addIdToImageMapping(
-                        ID_MIC,
-                        ResourceBuilders.ImageResource.Builder()
-                            .setAndroidResourceByResId(
-                                ResourceBuilders.AndroidImageResourceByResId.Builder().setResourceId(R.drawable.ic_mic).build()
-                            )
-                            .build()
+    private fun micImage(layoutScope: ProtoLayoutScope): LayoutElementBuilders.Image =
+        LayoutElementBuilders.Image.Builder(layoutScope)
+            .setImageResource(
+                ResourceBuilders.ImageResource.Builder()
+                    .setAndroidResourceByResId(
+                        ResourceBuilders.AndroidImageResourceByResId.Builder().setResourceId(R.drawable.ic_mic).build()
                     )
                     .build()
             )
-            "resources"
-        }
+            .setWidth(dp(40f))
+            .setHeight(dp(40f))
+            .setColorFilter(LayoutElementBuilders.ColorFilter.Builder().setTint(argb(0xFF1A1200.toInt())).build())
+            .build()
 
     private fun startOfToday(): Long =
         java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -74,7 +74,7 @@ class FullSkatTileService : TileService() {
         else -> getString(R.string.tile_hint)
     }
 
-    private fun buildTile(lastQuestion: String?, dialogsToday: Int): TileBuilders.Tile {
+    private fun buildTile(mic: LayoutElementBuilders.Image, lastQuestion: String?, dialogsToday: Int): TileBuilders.Tile {
         val accent = argb(ACCENT)
         val clickable = ModifiersBuilders.Clickable.Builder()
             .setId("listen")
@@ -116,14 +116,7 @@ class FullSkatTileService : TileService() {
                     .setSemantics(ModifiersBuilders.Semantics.Builder().setContentDescription(getString(R.string.tile_hint)).build())
                     .build()
             )
-            .addContent(
-                LayoutElementBuilders.Image.Builder()
-                    .setResourceId(ID_MIC)
-                    .setWidth(dp(40f))
-                    .setHeight(dp(40f))
-                    .setColorFilter(LayoutElementBuilders.ColorFilter.Builder().setTint(argb(0xFF1A1200.toInt())).build())
-                    .build()
-            )
+            .addContent(mic)
             .build()
 
         // Halo around the disc, drawn as a larger translucent circle behind it.
@@ -148,7 +141,7 @@ class FullSkatTileService : TileService() {
         val subtitle = LayoutElementBuilders.Text.Builder()
             .setText(subtitleText(lastQuestion, dialogsToday))
             .setMaxLines(2)
-            .setOverflow(LayoutElementBuilders.TEXT_OVERFLOW_ELLIPSIZE_END)
+            .setOverflow(LayoutElementBuilders.TEXT_OVERFLOW_ELLIPSIZE)
             .setMultilineAlignment(LayoutElementBuilders.TEXT_ALIGN_CENTER)
             .setFontStyle(LayoutElementBuilders.FontStyle.Builder().setSize(sp(12f)).setColor(argb(SUBTLE)).build())
             .build()
@@ -176,14 +169,11 @@ class FullSkatTileService : TileService() {
             .build()
 
         return TileBuilders.Tile.Builder()
-            .setResourcesVersion(RESOURCES_VERSION)
             .setTileTimeline(TimelineBuilders.Timeline.fromLayoutElement(root))
             .build()
     }
 
     companion object {
-        private const val RESOURCES_VERSION = "2"
-        private const val ID_MIC = "mic"
         private const val ACCENT = 0xFFFFB35C.toInt()
         private const val HALO = 0x24FFB35C
         private const val SUBTLE = 0xFF8A857C.toInt()
