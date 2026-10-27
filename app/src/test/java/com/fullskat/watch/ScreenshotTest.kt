@@ -6,10 +6,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
 import com.fullskat.watch.data.db.DialogEntity
@@ -94,6 +95,51 @@ class ScreenshotTest {
             ),
         )
         "d1"
+    }
+
+    private fun seedMany() = runBlocking {
+        val dao = container.db.dialogDao()
+        val now = System.currentTimeMillis()
+        val titles = listOf(
+            "Какая завтра погода в Москве?" to 2L * 60_000,
+            "Сколько будет 15 процентов от 2400" to 50L * 60_000,
+            "Напомни, как варить гречку" to 3L * 3_600_000,
+            "Переведи на английский: где ближайшая аптека" to 5L * 3_600_000,
+            "Курс доллара сегодня" to 26L * 3_600_000,
+            "Почему небо голубое?" to 2L * 86_400_000,
+            "Рецепт блинов без молока" to 3L * 86_400_000,
+            "Столица Австралии" to 4L * 86_400_000,
+            "Сколько калорий в банане" to 6L * 86_400_000,
+            "Как выключить будильник на часах" to 9L * 86_400_000,
+        )
+        titles.forEachIndexed { i, (title, ago) ->
+            dao.insertDialog(DialogEntity("m$i", title, now - ago, now - ago))
+            dao.insertMessage(MessageEntity(dialogId = "m$i", role = Role.USER, content = title, createdAt = now - ago))
+        }
+    }
+
+    private fun swipeUpTwice() {
+        repeat(2) { compose.onRoot().performTouchInput { swipeUp() }; compose.mainClock.advanceTimeBy(600) }
+    }
+
+    @Test fun dialogs_list_top() {
+        seedMany()
+        shot("17_dialogs_list_top") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+    }
+
+    @Test fun dialogs_list_scrolled() {
+        seedMany()
+        shot("18_dialogs_list_scrolled") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        compose.onRoot().performTouchInput { swipeUp(durationMillis = 400) }
+        compose.mainClock.advanceTimeBy(600)
+        compose.onRoot().captureRoboImage(File(dir, "18_dialogs_list_scrolled.png").path)
+    }
+
+    @Test fun dialogs_list_end() {
+        seedMany()
+        shot("19_dialogs_list_end") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        repeat(6) { swipeUpTwice() }
+        compose.onRoot().captureRoboImage(File(dir, "19_dialogs_list_end.png").path)
     }
 
     private fun seedThinking(): String = runBlocking {
@@ -187,8 +233,9 @@ class ScreenshotTest {
     @Test fun chat_thinking_expanded() {
         val id = seedThinking()
         shot("16_chat_thinking_expanded") { ChatScreen(AppViewModel(container), id, autoListen = false) }
-        compose.onNodeWithContentDescription("Expand").performClick()
-        compose.mainClock.advanceTimeBy(600)
+        compose.mainClock.autoAdvance = true // no endless animation on this screen
+        compose.onNodeWithText("Thinking").performClick()
+        compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(dir, "16_chat_thinking_expanded.png").path)
     }
 }
