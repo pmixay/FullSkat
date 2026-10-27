@@ -112,6 +112,13 @@ android {
                     it.systemProperty("fullskat.screenshots", "true")
                     it.systemProperty("roborazzi.test.record", "true")
                     it.maxHeapSize = "3g"
+                    // Robolectric's native-graphics runtime reaches into JDK internals (Java 17+).
+                    it.jvmArgs(
+                        "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+                        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                        "--add-opens=java.base/java.io=ALL-UNNAMED",
+                        "--add-opens=java.base/java.util=ALL-UNNAMED",
+                    )
                 }
             }
         }
