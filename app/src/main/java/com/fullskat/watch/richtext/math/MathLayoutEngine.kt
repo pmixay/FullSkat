@@ -614,12 +614,12 @@ class MathLayoutEngine(private val metrics: MathMetrics) {
         )
         if (g == "↦") out.ops += PolyOp(floatArrayOf(pad, y - 0.07f * sz, pad, y + 0.07f * sz), 0.05f * sz, cx.color)
         if (above != null) {
-            val baseline = y - 0.09f * sz - above.d - (if (double) 0.045f * sz else 0f)
+            val baseline = y - 0.13f * sz - above.d - (if (double) 0.045f * sz else 0f)
             out.add(above, pad + (len - above.w) / 2f, baseline)
             out.a = max(out.a, -baseline + above.a)
         }
         if (below != null) {
-            val baseline = y + 0.09f * sz + below.a + (if (double) 0.045f * sz else 0f)
+            val baseline = y + 0.13f * sz + below.a + (if (double) 0.045f * sz else 0f)
             out.add(below, pad + (len - below.w) / 2f, baseline)
             out.d = max(out.d, baseline + below.d)
         }

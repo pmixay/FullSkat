@@ -107,8 +107,12 @@ class RichTextScreenshotTest {
     @Test fun math_page_07() = mathPage(6)
     @Test fun math_page_08() = mathPage(7)
     @Test fun math_page_09() = mathPage(8)
+    @Test fun math_page_10() = mathPage(9)
+    @Test fun math_page_11() = mathPage(10)
+    @Test fun math_page_12() = mathPage(11)
+    @Test fun math_page_13() = mathPage(12)
 
-    @Test fun inline_math_page() = page("m10_inline") {
+    @Test fun inline_math_page() = page("m20_inline") {
         for (f in MathExamples.inline) Bubble("Вот формула \$$f\$ прямо в тексте, а дальше обычные слова, чтобы строка переносилась.")
     }
 

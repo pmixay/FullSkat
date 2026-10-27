@@ -138,8 +138,12 @@ private fun BlockView(b: Block, env: RichEnv, base: TextStyle) {
         is CodeBlock -> CodeBlockView(b, base)
         is DisplayMath -> MathBlock(b.latex, env, base)
         is ListItem -> Row {
-            val numbered = b.marker.length > 1 && b.marker[0].isDigit()
-            BasicText(b.marker, Modifier.widthIn(min = if (numbered) 24.dp else 15.dp), style = base)
+            val markerWidth = when {
+                b.marker.length > 1 && b.marker[0].isDigit() -> 26.dp
+                b.marker == "•" -> 15.dp
+                else -> 24.dp // checkboxes
+            }
+            BasicText(b.marker, Modifier.widthIn(min = markerWidth), style = base)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 for (inner in b.blocks) BlockView(inner, env, base)
             }
