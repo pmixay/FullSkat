@@ -1,9 +1,11 @@
 package com.fullskat.watch
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
 import com.fullskat.watch.data.db.DialogEntity
@@ -44,7 +46,7 @@ class RichChatScreenshotTest {
 
     private val dir = File(System.getProperty("fullskat.screenshots.dir") ?: "build/screenshots").also { it.mkdirs() }
 
-    private fun conversation(name: String, vararg turns: Pair<Role, String>, states: Int = 6) {
+    private fun conversation(name: String, vararg turns: Pair<Role, String>, states: Int = 9) {
         val container = FullSkatApp.container(ApplicationProvider.getApplicationContext())
         val id = "conv-$name"
         runBlocking {
@@ -58,6 +60,16 @@ class RichChatScreenshotTest {
         }
         compose.setContent { FullSkatTheme { AppScaffold { ChatScreen(AppViewModel(container), id, autoListen = false) } } }
         compose.waitForIdle()
+        // The messages arrive from Room asynchronously: wait until the first question is on screen.
+        val probe = turns.first { it.first == Role.USER }.second.take(10)
+        try {
+            compose.waitUntil(10_000) { compose.onAllNodesWithText(probe, substring = true).fetchSemanticsNodes().isNotEmpty() }
+        } catch (_: Throwable) {
+        }
+        compose.waitForIdle()
+        // Go to the end of the chat in half-screen steps, then photograph upwards until the top: files are numbered
+        // end-first, the post-processing puts them in reading order.
+        repeat(12) { compose.onRoot().performTouchInput { swipeUp(startY = 330f, endY = 90f, durationMillis = 1500) }; compose.waitForIdle() }
         compose.onRoot().captureRoboImage(File(dir, "conv_${name}_1.png").path)
         for (n in 2..states) {
             compose.onRoot().performTouchInput { swipeDown(startY = 90f, endY = 330f, durationMillis = 1500) } // about half a screen, slow enough not to fling
