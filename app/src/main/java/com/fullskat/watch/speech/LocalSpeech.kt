@@ -24,9 +24,10 @@ import kotlinx.coroutines.withContext
  */
 class LocalSpeech(private val context: Context) {
     private val lock = Any()
-    private var recognizer: OnlineRecognizer? = null
+    @Volatile private var recognizer: OnlineRecognizer? = null
 
-    val loaded: Boolean get() = synchronized(lock) { recognizer != null }
+    /** Lock-free: callers on the main thread must not wait for a model load that is still in progress. */
+    val loaded: Boolean get() = recognizer != null
 
     /** Loads the model (about a second) so the first utterance starts without delay. */
     suspend fun warmUp() {
@@ -93,7 +94,7 @@ class LocalSpeech(private val context: Context) {
                 tokens = "$dir/tokens.txt",
                 numThreads = THREADS,
             ),
-            // The app's own endpoint detector decides when the user is done (5 s after the last word),
+            // The app's own endpoint detector decides when the user is done (2.5 s after the last word),
             // so the recognizer must not cut the utterance on its shorter pauses.
             enableEndpoint = false,
             // Beam search keeps a few hypotheses alive; it fixes many Russian word-ending errors that

@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -200,6 +200,17 @@ class ScreenshotTest {
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Listening("Какая завтра погода в Москве и нужен ли зонт", 0.35f, true)
         shot("09_chat_listening") { ChatScreen(vm, id, autoListen = false) }
+    }
+
+    @Test fun chat_listening_long() {
+        val id = seed()
+        val vm = AppViewModel(container)
+        turnOf(vm).value = TurnState.Listening(
+            "Расскажи подробно, как работает рассеяние света в атмосфере, почему небо голубое днём, " +
+                "а на закате становится красным, и чем это отличается от рассеяния на облаках и тумане",
+            0.35f, true,
+        )
+        shot("22_chat_listening_long") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun chat_listening_silent() {

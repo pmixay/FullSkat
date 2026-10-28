@@ -19,19 +19,26 @@ class EndpointDetector(
     private var speechMs = 0
     private var silenceAfterSpeechMs = 0
     private var totalMs = 0
-    var speaking: Boolean = false
+    @Volatile private var textReceived = false
+    @Volatile var speaking: Boolean = false
         private set
 
     enum class Verdict { CONTINUE, END, TIMEOUT }
 
-    /** The server sent recognised text: from now on the utterance ends after [silenceMs] of quiet. */
+    /**
+     * The recognizer produced text: from now on the utterance ends after [silenceMs] of quiet.
+     * Safe to call from another thread than [feed]; it takes effect on the next frame.
+     */
     fun markTextReceived() {
-        speaking = true
-        speechMs = maxOf(speechMs, minSpeechMs)
+        textReceived = true
     }
 
     fun feed(rms: Float): Verdict {
         totalMs += frameMs
+        if (textReceived) {
+            speaking = true
+            speechMs = maxOf(speechMs, minSpeechMs)
+        }
         if (rms < noiseFloor) noiseFloor = noiseFloor * 0.8f + rms * 0.2f
         else noiseFloor += (rms - noiseFloor) * 0.005f
         val threshold = maxOf(noiseFloor * 3.5f, 0.012f)
@@ -57,7 +64,7 @@ class EndpointDetector(
         /** Nothing heard and no text yet: give up after this long. */
         const val NO_TEXT_TIMEOUT_MS = 30_000
         /** Text already recognised: end the turn after this much quiet. */
-        const val SILENCE_AFTER_TEXT_MS = 5_000
+        const val SILENCE_AFTER_TEXT_MS = 2_500
         const val MAX_UTTERANCE_MS = 60_000
     }
 }

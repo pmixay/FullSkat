@@ -6,6 +6,7 @@ import android.os.VibratorManager
 import android.util.Log
 import com.fullskat.watch.audio.AudioCapture
 import com.fullskat.watch.audio.EndpointDetector
+import com.fullskat.watch.audio.untilEndpoint
 import com.fullskat.watch.data.db.DialogDao
 import com.fullskat.watch.data.db.DialogEntity
 import com.fullskat.watch.data.db.MessageEntity
@@ -25,14 +26,10 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.shareIn
-import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -142,23 +139,16 @@ class AssistantTurn(
         }
         _state.value = TurnState.Listening("", 0f, false)
         val stopSignal = MutableSharedFlow<Unit>(replay = 1).also { this@AssistantTurn.stopSignal = it }
-        val frames = audio.frames().shareIn(this, SharingStarted.WhileSubscribed(), replay = 0)
         val detector = EndpointDetector()
-        // Level meter + endpoint detection. Ends (and releases the microphone) as soon as the
-        // detector decides or the user taps, without waiting for the recognizer's final transcript.
-        val detectorJob = launch {
-            frames
-                .takeWhile { f ->
-                    _state.update { s -> if (s is TurnState.Listening) s.copy(level = f.rms, speaking = detector.speaking) else s }
-                    detector.feed(f.rms) == EndpointDetector.Verdict.CONTINUE && stopSignal.replayCache.isEmpty()
-                }
-                .collect()
-            stopSignal.tryEmit(Unit)
+        // Level meter + endpoint detection ride on the audio stream itself: it ends (and releases the
+        // microphone) as soon as the detector decides or the user taps, and the recognizer then flushes.
+        val pcm = audio.frames().untilEndpoint(detector, stopRequested = { stopSignal.replayCache.isNotEmpty() }) { f ->
+            _state.update { s -> if (s is TurnState.Listening) s.copy(level = f.rms, speaking = detector.speaking) else s }
         }
         var finalText: String? = null
         var error: ListenEvent.Error? = null
         var hapticsOn = settings.current().haptics
-        speech.listen(frames.map { it.pcm }, stopSignal).collect { ev ->
+        speech.listen(pcm, stopSignal).collect { ev ->
             when (ev) {
                 ListenEvent.Ready -> haptic(hapticsOn, 12)
                 is ListenEvent.Partial -> {
@@ -172,7 +162,6 @@ class AssistantTurn(
                 is ListenEvent.Error -> error = ev
             }
         }
-        detectorJob.cancel()
         this@AssistantTurn.stopSignal = null
         error?.let { throw SpeechEngineException(it.message) }
         finalText.orEmpty().trim()
