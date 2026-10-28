@@ -47,6 +47,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
@@ -171,7 +172,7 @@ private fun BlockView(b: Block, env: RichEnv, base: TextStyle) {
 
 // ------------------------------------------------------------------ inline text with math placeholders
 
-private class Built(val text: AnnotatedString, val content: Map<String, InlineTextContent>)
+private class Built(val text: AnnotatedString, val content: Map<String, InlineTextContent>, val descentExcessPx: Float)
 
 @Composable
 private fun InlineText(
@@ -184,11 +185,15 @@ private fun InlineText(
     val density = LocalDensity.current
     val fontPx = with(density) { style.fontSize.toPx() }
     val built = remember(inlines, fontPx, style.color, bold) { buildInline(inlines, env, style.fontSize, fontPx, density, style.color, bold) }
-    BasicText(
-        built.text,
-        style = if (textAlign != null) style.copy(textAlign = textAlign) else style,
-        inlineContent = built.content,
-    )
+    // A formula that hangs below the baseline gets the room it needs under every line (all the extra goes below the text).
+    var s = if (built.descentExcessPx > 0.5f) {
+        style.copy(
+            lineHeight = style.lineHeight + with(density) { built.descentExcessPx.toSp() },
+            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None),
+        )
+    } else style
+    if (textAlign != null) s = s.copy(textAlign = textAlign)
+    BasicText(built.text, style = s, inlineContent = built.content)
 }
 
 private fun buildInline(
@@ -202,6 +207,7 @@ private fun buildInline(
 ): Built {
     val content = HashMap<String, InlineTextContent>()
     var mathCount = 0
+    var descentExcess = 0f // how far inline formulas hang below the text's own descent (fractions, limits)
     val text = buildAnnotatedString {
         for (i in inlines) {
             when (i) {
@@ -217,14 +223,16 @@ private fun buildInline(
                 ) { append(" ${i.text} ") }
                 is Math -> {
                     val id = "m${mathCount++}"
-                    content[id] = mathContent(env.layout(i.latex, display = false), env, i.latex, fontPx, density, color)
+                    val layout = env.layout(i.latex, display = false)
+                    descentExcess = maxOf(descentExcess, layout.descent * fontPx - 0.26f * fontPx)
+                    content[id] = mathContent(layout, env, i.latex, fontPx, density, color)
                     appendInlineContent(id, i.latex)
                 }
                 Break -> append("\n")
             }
         }
     }
-    return Built(text, content)
+    return Built(text, content, maxOf(descentExcess, 0f))
 }
 
 /** A formula in the middle of a line: the placeholder rests on the text baseline, descenders hang below it. */
@@ -260,7 +268,7 @@ private fun MathBlock(latex: String, env: RichEnv, base: TextStyle) {
     val argb = base.color.toArgb()
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val maxPx = with(density) { maxWidth.toPx() }
-        val natural = layout.width * fontPx
+        val natural = (layout.width + 0.2f) * fontPx // the formula plus its 0.1 em padding on both sides
         val scale = if (natural <= maxPx) 1f else maxOf(maxPx / natural, MIN_MATH_SCALE)
         val px = fontPx * scale
         val pad = 0.1f * px
@@ -276,7 +284,7 @@ private fun MathBlock(latex: String, env: RichEnv, base: TextStyle) {
             }
         }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (wPx <= maxPx) formula() else Box(Modifier.horizontalScroll(rememberScrollState())) { formula() }
+            if (wPx <= maxPx + 0.5f) formula() else Box(Modifier.horizontalScroll(rememberScrollState())) { formula() }
         }
     }
 }

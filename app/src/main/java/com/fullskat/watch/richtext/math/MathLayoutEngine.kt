@@ -724,11 +724,13 @@ class MathLayoutEngine(private val metrics: MathMetrics) {
         val left = delimBox(l, body.a, body.d, cx0, minHeight = 0f)
         val right = delimBox(r, body.a, body.d, cx0, minHeight = 0f)
         val parts = ArrayList<Box>()
+        parts += Box(0.08f * s, 0f, 0f) // so that neighbouring matrices do not touch
         parts += left
-        if (env == "cases" || env == "dcases") parts += Box(0.1f * s, 0f, 0f)
+        if (env == "cases" || env == "dcases") parts += Box(0.2f * s, 0f, 0f)
         parts += body
-        if (env == "rcases") parts += Box(0.1f * s, 0f, 0f)
+        if (env == "rcases") parts += Box(0.2f * s, 0f, 0f)
         parts += right
+        parts += Box(0.08f * s, 0f, 0f)
         return join(parts)
     }
 

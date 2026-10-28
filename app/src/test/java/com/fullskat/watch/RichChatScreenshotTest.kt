@@ -44,7 +44,7 @@ class RichChatScreenshotTest {
 
     private val dir = File(System.getProperty("fullskat.screenshots.dir") ?: "build/screenshots").also { it.mkdirs() }
 
-    private fun conversation(name: String, vararg turns: Pair<Role, String>, states: Int = 3) {
+    private fun conversation(name: String, vararg turns: Pair<Role, String>, states: Int = 6) {
         val container = FullSkatApp.container(ApplicationProvider.getApplicationContext())
         val id = "conv-$name"
         runBlocking {
@@ -60,7 +60,7 @@ class RichChatScreenshotTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage(File(dir, "conv_${name}_1.png").path)
         for (n in 2..states) {
-            compose.onRoot().performTouchInput { swipeDown() }
+            compose.onRoot().performTouchInput { swipeDown(startY = 90f, endY = 330f, durationMillis = 1500) } // about half a screen, slow enough not to fling
             compose.waitForIdle()
             compose.onRoot().captureRoboImage(File(dir, "conv_${name}_$n.png").path)
         }
@@ -127,7 +127,6 @@ class RichChatScreenshotTest {
 Если скорость растёт вдвое, энергия растёт в **четыре** раза.
             """,
         ),
-        states = 4,
     )
 
     @Test fun python_code() = conversation(
@@ -147,7 +146,6 @@ def factorial(n: int) -> int:
 Для `n = 5` получится §5! = 120§. Для больших `n` лучше цикл или `math.factorial`.
             """,
         ),
-        states = 4,
     )
 
     @Test fun matrices() = conversation(
@@ -174,7 +172,6 @@ For a sample of §n§ values with mean §\bar{x}§:
 For a whole population divide by §n§ and write it as §\sigma§.
             """,
         ),
-        states = 4,
     )
 
     @Test fun piecewise() = conversation(
@@ -201,7 +198,6 @@ For a whole population divide by §n§ and write it as §\sigma§.
 Реакция образования: §2\mathrm{H}_2 + \mathrm{O}_2 \to 2\mathrm{H}_2\mathrm{O}§.
             """,
         ),
-        states = 4,
     )
 
     @Test fun euler_thread() = conversation(
@@ -236,7 +232,6 @@ plt.show()
 ```
             """,
         ),
-        states = 5,
     )
 
     @Test fun series_and_limits() = conversation(
@@ -249,7 +244,6 @@ plt.show()
 Сходится при любом §x§. Предел: §\lim_{n\to\infty}\left(1+\frac{1}{n}\right)^n = e§.
             """,
         ),
-        states = 4,
     )
 
     @Test fun probability_table() = conversation(
@@ -267,6 +261,5 @@ plt.show()
 | 3 | §\tfrac{91}{216}§ |
             """,
         ),
-        states = 4,
     )
 }
