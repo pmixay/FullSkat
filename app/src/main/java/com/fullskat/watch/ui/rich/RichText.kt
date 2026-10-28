@@ -188,7 +188,7 @@ private fun InlineText(
     // A formula that hangs below the baseline gets the room it needs under every line (all the extra goes below the text).
     var s = if (built.descentExcessPx > 0.5f) {
         style.copy(
-            lineHeight = style.lineHeight + with(density) { built.descentExcessPx.toSp() },
+            lineHeight = (style.lineHeight.value + with(density) { built.descentExcessPx.toSp().value }).sp,
             lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Top, LineHeightStyle.Trim.None),
         )
     } else style
