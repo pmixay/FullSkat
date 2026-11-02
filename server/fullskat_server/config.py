@@ -8,11 +8,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_ALLOWED_MODELS = (
-    "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
-    "google/gemini-3.5-flash,anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5,"
-    "anthropic/claude-opus-5.5,anthropic/claude-fable-5.1"
-)
+DEFAULT_ALLOWED_MODELS = "openai/gpt-6.1-terra"
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
 
@@ -40,7 +36,7 @@ class Settings(BaseSettings):
 
     # OpenRouter (chat, used when LLM_PROVIDER=openrouter)
     openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-5.6-luna"
+    openrouter_model: str = "openai/gpt-6.1-terra"
     openrouter_reasoning_effort: str = "high"
     openrouter_allowed_models: str = DEFAULT_ALLOWED_MODELS
     openrouter_base_url: str = "https://openrouter.ai/api/v1"

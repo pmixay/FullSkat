@@ -101,8 +101,8 @@ def test_default_provider_is_anthropic_with_haiku(tmp_path: Path) -> None:
 
 def test_openrouter_provider_uses_its_own_models(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, llm_provider="openrouter")
-    assert settings.chat_model == "openai/gpt-5.6-luna"
-    assert "anthropic/claude-sonnet-5.5" in settings.allowed_models
+    assert settings.chat_model == "openai/gpt-6.1-terra"
+    assert settings.allowed_models == ["openai/gpt-6.1-terra"]
     assert isinstance(create_llm(settings, httpx.AsyncClient()), OpenRouterLLM)
 
 
