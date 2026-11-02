@@ -438,14 +438,57 @@ def test_kimi_body(tmp_path: Path) -> None:
     assert llm._body([], "m", effort="none")["thinking"] == {"type": "disabled"}
 
 
-async def test_kimi_efforts_are_not_adjustable_unless_configured(tmp_path: Path) -> None:
-    plain = KimiLLM(make_settings(tmp_path, kimi_api_key="k"), httpx.AsyncClient())
-    assert await plain.efforts("kimi-k3.1-pro") == ModelEfforts()
-    configured = KimiLLM(
-        make_settings(tmp_path, kimi_api_key="k", kimi_efforts="none, low,high", kimi_default_effort="high"),
-        httpx.AsyncClient(),
+KIMI_CATALOG = {
+    "data": [
+        {
+            "id": "moonshotai/kimi-k3.1-pro",
+            "reasoning": {"supported_efforts": ["max", "high", "low", "none"], "default_effort": "max"},
+        },
+        {"id": "moonshotai/kimi-k2.6", "reasoning": {"mandatory": False, "default_enabled": True}},
+    ]
+}
+
+
+def kimi_with_catalog(tmp_path: Path, **overrides: Any) -> KimiLLM:
+    client = mock_client(lambda request: httpx.Response(200, json=KIMI_CATALOG))
+    return KimiLLM(make_settings(tmp_path, kimi_api_key="k", **overrides), client)
+
+
+async def test_kimi_efforts_differ_per_model_from_the_catalog(tmp_path: Path) -> None:
+    llm = kimi_with_catalog(tmp_path)
+    # K3.1 Pro is in OpenRouter's public model list: its own levels and default.
+    assert await llm.efforts("kimi-k3.1-pro") == ModelEfforts(("none", "low", "high", "max"), "max")
+    assert await llm.efforts("kimi-k2.6") == ModelEfforts()  # known, but only on/off
+    # K2.8 preview is not listed anywhere: not adjustable unless the operator says otherwise.
+    assert await llm.efforts("kimi-k2.8-preview") == ModelEfforts()
+
+
+async def test_kimi_per_model_override_beats_catalog_and_global(tmp_path: Path) -> None:
+    llm = kimi_with_catalog(
+        tmp_path,
+        kimi_model_efforts={"kimi-k2.8-preview": "low, high", "kimi-k3.1-pro": ""},
+        kimi_efforts="medium",
+        kimi_default_effort="high",
     )
-    assert await configured.efforts("kimi-k3.1-pro") == ModelEfforts(("none", "low", "high"), "high")
+    assert await llm.efforts("kimi-k2.8-preview") == ModelEfforts(("low", "high"), "high")
+    assert await llm.efforts("kimi-k3.1-pro") == ModelEfforts()  # an empty override turns effort off
+    assert await llm.efforts("kimi-other") == ModelEfforts(("medium",), "medium")  # global list for the rest
+
+
+async def test_kimi_catalog_can_be_disabled_and_failures_fall_back(tmp_path: Path) -> None:
+    off = kimi_with_catalog(tmp_path, kimi_efforts_from_catalog=False, kimi_efforts="low,high", kimi_default_effort="low")
+    assert await off.efforts("kimi-k3.1-pro") == ModelEfforts(("low", "high"), "low")
+    broken = KimiLLM(
+        make_settings(tmp_path, kimi_api_key="k", kimi_efforts="none,low,high", kimi_default_effort="high"),
+        mock_client(lambda request: httpx.Response(503)),
+    )
+    assert await broken.efforts("kimi-k3.1-pro") == ModelEfforts(("none", "low", "high"), "high")
+
+
+def test_kimi_model_efforts_parse_from_json_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KIMI_MODEL_EFFORTS", '{"kimi-k3.1-pro": "low,high,max", "kimi-k2.8-preview": ""}')
+    settings = Settings(_env_file=None, data_dir=tmp_path)
+    assert settings.kimi_model_efforts == {"kimi-k3.1-pro": "low,high,max", "kimi-k2.8-preview": ""}
 
 
 async def test_kimi_runs_the_web_search_tool_loop(tmp_path: Path) -> None:

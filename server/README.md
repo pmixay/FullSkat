@@ -103,10 +103,18 @@ and the efforts each model supports (`model_efforts`).
 ### Efforts
 
 Providers disagree about reasoning effort levels (Claude: low to max; Kimi K3: low, high, max, none;
-Gemini: minimal to high; Kimi K2.x: none at all), so the server asks where it can: OpenRouter's public
-model list (`reasoning.supported_efforts`), the Claude Models API (`capabilities.effort`). Kimi has no
-such endpoint, so `KIMI_EFFORTS` lists the levels (empty = not adjustable). The watch shows only the
-levels the selected model supports; a requested level the model lacks is moved to the nearest
+Gemini: minimal to high; Kimi K2.x: none at all) and they differ per model, so the server asks where
+it can: OpenRouter's public model list (`reasoning.supported_efforts`) and the Claude Models API
+(`capabilities.effort`). Moonshot has no such endpoint, so for each Kimi model the server uses, in order:
+
+1. `KIMI_MODEL_EFFORTS`, your own per-model list as JSON, for example
+   `{"kimi-k3.1-pro":"low,high,max","kimi-k2.8-preview":""}` (an empty string means not adjustable);
+2. OpenRouter's public entry `moonshotai/<model>` (no key needed; `KIMI_EFFORTS_FROM_CATALOG=false`
+   turns this off), which knows K3.1 Pro;
+3. `KIMI_EFFORTS`, one list for every model that has neither (empty = not adjustable).
+
+A model nobody knows, such as a preview, is therefore not adjustable until you list it. The watch shows
+only the levels the selected model supports; a requested level the model lacks is moved to the nearest
 supported one, and a model that is not adjustable ignores it. Answers are cached for an hour.
 
 ### Usage ring

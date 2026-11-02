@@ -327,6 +327,47 @@ class _ChatCompletionsLLM:
             yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
+class EffortCatalog:
+    """OpenRouter's public model list: which efforts each model accepts (cached, no API key needed)."""
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
+        self._settings = settings
+        self._client = client
+        self._entries: dict[str, tuple[tuple[str, ...], str]] = {}
+        self._until = 0.0
+        self._lock = asyncio.Lock()
+
+    async def _load(self) -> None:
+        async with self._lock:
+            if time.monotonic() < self._until:
+                return
+            url = f"{self._settings.openrouter_base_url.rstrip('/')}/models"
+            try:
+                response = await self._client.get(url, headers={"Accept": "application/json"}, timeout=10.0)
+                response.raise_for_status()
+                self._entries = {e["id"]: _entry_efforts(e) for e in response.json()["data"]}
+                self._until = time.monotonic() + EFFORTS_TTL
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                log.warning("Could not read the OpenRouter model list, assuming default efforts: %s", exc)
+                self._until = time.monotonic() + EFFORTS_RETRY
+
+    async def lookup(self, model_id: str) -> tuple[tuple[str, ...], str] | None:
+        """(supported efforts, the catalog's default) of a model, or None when it is unknown or the list is unreadable.
+
+        An empty tuple means the model is known but its effort is not adjustable (reasoning on/off or none).
+        """
+        await self._load()
+        return self._entries.get(model_id)
+
+
+def _entry_efforts(entry: dict[str, Any]) -> tuple[tuple[str, ...], str]:
+    """Efforts of one catalog entry: its `reasoning.supported_efforts`, none for toggle-only/non-reasoning models."""
+    reasoning = entry.get("reasoning")
+    if not isinstance(reasoning, dict):
+        return (), ""
+    return normalize_efforts(reasoning.get("supported_efforts") or []), str(reasoning.get("default_effort") or "")
+
+
 class OpenRouterLLM(_ChatCompletionsLLM):
     """Streams text deltas from OpenRouter's OpenAI-compatible chat endpoint."""
 
@@ -334,9 +375,7 @@ class OpenRouterLLM(_ChatCompletionsLLM):
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         super().__init__(settings, client)
-        self._catalog: dict[str, ModelEfforts] = {}
-        self._catalog_until = 0.0
-        self._catalog_lock = asyncio.Lock()
+        self._catalog = EffortCatalog(settings, client)
 
     def _api_key(self) -> str:
         return self._settings.openrouter_api_key
@@ -390,39 +429,13 @@ class OpenRouterLLM(_ChatCompletionsLLM):
             log.debug("OpenRouter usage unavailable: %s", exc)
             return None
 
-    async def _load_catalog(self) -> None:
-        """Read which efforts each model accepts from OpenRouter's public model list (cached)."""
-        async with self._catalog_lock:
-            if time.monotonic() < self._catalog_until:
-                return
-            url = f"{self._settings.openrouter_base_url.rstrip('/')}/models"
-            try:
-                response = await self._client.get(url, headers={"Accept": "application/json"}, timeout=10.0)
-                response.raise_for_status()
-                entries = response.json()["data"]
-                self._catalog = {e["id"]: _openrouter_entry_efforts(e, self._settings) for e in entries}
-                self._catalog_until = time.monotonic() + EFFORTS_TTL
-            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-                log.warning("Could not read the OpenRouter model list, assuming default efforts: %s", exc)
-                self._catalog_until = time.monotonic() + EFFORTS_RETRY
-
     async def efforts(self, model: str) -> ModelEfforts:
-        await self._load_catalog()
-        known = self._catalog.get(model)
+        known = await self._catalog.lookup(model)
         if known is not None:
-            return known
+            supported, catalog_default = known
+            return ModelEfforts(supported, pick_default(supported, self._settings.openrouter_reasoning_effort, catalog_default))
         supported = OPENROUTER_FALLBACK_EFFORTS
         return ModelEfforts(supported, pick_default(supported, self._settings.openrouter_reasoning_effort))
-
-
-def _openrouter_entry_efforts(entry: dict[str, Any], settings: Settings) -> ModelEfforts:
-    """Efforts of one catalog entry: its `reasoning.supported_efforts`, or none for toggle-only/non-reasoning models."""
-    reasoning = entry.get("reasoning")
-    if not isinstance(reasoning, dict):
-        return ModelEfforts()
-    supported = normalize_efforts(reasoning.get("supported_efforts") or [])
-    default = pick_default(supported, settings.openrouter_reasoning_effort, reasoning.get("default_effort"))
-    return ModelEfforts(supported, default)
 
 
 class KimiLLM(_ChatCompletionsLLM):
@@ -430,6 +443,10 @@ class KimiLLM(_ChatCompletionsLLM):
 
     label = "Kimi"
     WEB_SEARCH = "$web_search"
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
+        super().__init__(settings, client)
+        self._catalog = EffortCatalog(settings, client)
 
     def _api_key(self) -> str:
         return self._settings.kimi_api_key
@@ -477,8 +494,24 @@ class KimiLLM(_ChatCompletionsLLM):
         return UsageLeft(_share(balance, full) if full > 0 else None, f"{symbol}{max(balance, 0.0):.2f}")
 
     async def efforts(self, model: str) -> ModelEfforts:
-        supported = normalize_efforts(self._settings.kimi_efforts.split(","))
-        return ModelEfforts(supported, pick_default(supported, self._settings.kimi_default_effort))
+        """Efforts of one Kimi model. Moonshot has no endpoint for this, so, in order:
+
+        1. KIMI_MODEL_EFFORTS, the operator's per-model list (empty = not adjustable),
+        2. OpenRouter's public catalog entry `moonshotai/<model>` (if KIMI_EFFORTS_FROM_CATALOG),
+        3. KIMI_EFFORTS, the list for every model that has neither.
+        """
+        settings = self._settings
+        own = settings.kimi_model_efforts.get(model)
+        if own is not None:
+            supported = normalize_efforts(own.split(","))
+            return ModelEfforts(supported, pick_default(supported, settings.kimi_default_effort))
+        if settings.kimi_efforts_from_catalog:
+            known = await self._catalog.lookup(f"moonshotai/{model}")
+            if known is not None:
+                supported, catalog_default = known
+                return ModelEfforts(supported, pick_default(supported, settings.kimi_default_effort, catalog_default))
+        supported = normalize_efforts(settings.kimi_efforts.split(","))
+        return ModelEfforts(supported, pick_default(supported, settings.kimi_default_effort))
 
     async def stream(
         self,

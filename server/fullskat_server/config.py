@@ -51,7 +51,12 @@ class Settings(BaseSettings):
     kimi_allowed_models: str = DEFAULT_KIMI_ALLOWED_MODELS
     kimi_base_url: str = "https://api.moonshot.ai/v1"
     kimi_max_tokens: int = Field(default=4096, ge=1)
-    # Effort levels Kimi models accept (comma-separated, e.g. "none,low,high"); empty = not adjustable.
+    # Effort levels per Kimi model. Moonshot has no endpoint that lists them, so they come from, in order:
+    # KIMI_MODEL_EFFORTS (JSON, per model, "" = not adjustable), OpenRouter's public model list
+    # (moonshotai/<model>; turn off with KIMI_EFFORTS_FROM_CATALOG=false) and KIMI_EFFORTS (comma-separated,
+    # e.g. "none,low,high"), the list for every model without its own; empty = not adjustable.
+    kimi_model_efforts: dict[str, str] = Field(default_factory=dict)
+    kimi_efforts_from_catalog: bool = True
     kimi_efforts: str = ""
     kimi_default_effort: str = ""
     # Kimi reports only an absolute balance. The balance that counts as "100%" for the watch's usage ring
