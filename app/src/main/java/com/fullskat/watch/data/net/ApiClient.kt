@@ -54,11 +54,13 @@ class ApiClient {
                             model = o.optString("model").ifBlank { null },
                             models = o.optStrings("models"),
                             effort = o.optString("effort").ifBlank { null },
+                            modelEfforts = o.optModelEfforts(),
+                            providers = o.optProviders(),
                         )
                     }
                     401 -> throw ApiException.WrongPasscode()
                     429 -> throw ApiException.Locked(resp.retryAfter())
-                    else -> throw ApiException.Server(resp.code, errorMessage(text))
+                    else -> throw serverError(resp.code, text)
                 }
             }
         }
@@ -73,11 +75,18 @@ class ApiClient {
             val text = resp.body.string()
             when (resp.code) {
                 200 -> JSONObject(text).let {
-                    MeResult(it.optString("model").ifBlank { null }, it.optStrings("models"), it.optString("effort").ifBlank { null }, it.optString("device_name").ifBlank { null })
+                    MeResult(
+                        model = it.optString("model").ifBlank { null },
+                        models = it.optStrings("models"),
+                        effort = it.optString("effort").ifBlank { null },
+                        deviceName = it.optString("device_name").ifBlank { null },
+                        modelEfforts = it.optModelEfforts(),
+                        providers = it.optProviders(),
+                    )
                 }
                 401 -> throw ApiException.Unauthorized(errorMessage(text))
-                429 -> throw ApiException.RateLimited(resp.retryAfter())
-                else -> throw ApiException.Server(resp.code, errorMessage(text))
+                429 -> throw ApiException.RateLimited(resp.retryAfter(), errorCode(text).ifBlank { "rate_limited" })
+                else -> throw serverError(resp.code, text)
             }
         }
     }
@@ -113,8 +122,8 @@ class ApiClient {
                 val text = resp.body.string()
                 when (resp.code) {
                     401 -> throw ApiException.Unauthorized(errorMessage(text))
-                    429 -> throw ApiException.RateLimited(resp.retryAfter())
-                    else -> throw ApiException.Server(resp.code, errorMessage(text))
+                    429 -> throw ApiException.RateLimited(resp.retryAfter(), errorCode(text).ifBlank { "rate_limited" })
+                    else -> throw serverError(resp.code, text)
                 }
             }
             val source = resp.body.source()
@@ -148,7 +157,7 @@ class ApiClient {
             "delta" -> ChatEvent.Delta(o.optString("text"))
             "thinking" -> ChatEvent.Thinking(o.optString("text"))
             "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null }, o.optString("thinking"))
-            "error" -> ChatEvent.Error(o.optString("error", "error"), o.optString("message"))
+            "error" -> ChatEvent.Error(o.optString("error", "error"), o.optString("message"), o.optInt("retry_after", 0))
             else -> null
         }
     }.getOrElse {
@@ -166,6 +175,35 @@ class ApiClient {
         val a = optJSONArray(name) ?: return emptyList()
         return (0 until a.length()).mapNotNull { a.optString(it).ifBlank { null } }
     }
+
+    private fun JSONObject.optModelEfforts(): Map<String, ModelEfforts> {
+        val all = optJSONObject("model_efforts") ?: return emptyMap()
+        return all.keys().asSequence().associateWith { model ->
+            val o = all.optJSONObject(model)
+            ModelEfforts(o?.optStrings("efforts").orEmpty(), o?.optString("default")?.ifBlank { null })
+        }
+    }
+
+    /** Working providers in server order (it lists them by priority). */
+    private fun JSONObject.optProviders(): List<ProviderInfo> {
+        val all = optJSONObject("providers") ?: return emptyList()
+        return all.keys().asSequence().mapNotNull { id ->
+            val o = all.optJSONObject(id) ?: return@mapNotNull null
+            if (!o.optBoolean("ok", false)) return@mapNotNull null
+            val usage = o.optJSONObject("usage")
+            ProviderInfo(
+                id = id,
+                models = o.optStrings("models"),
+                usageRemaining = usage?.takeIf { !it.isNull("remaining") }?.optDouble("remaining")?.toFloat(),
+                usageLabel = usage?.optString("label").orEmpty(),
+            )
+        }.toList()
+    }
+
+    private fun serverError(status: Int, text: String) =
+        ApiException.Server(status, errorMessage(text), errorCode(text))
+
+    private fun errorCode(text: String): String = runCatching { JSONObject(text).optString("error") }.getOrDefault("")
 
     private fun Response.retryAfter(): Int = header("Retry-After")?.toIntOrNull() ?: 30
 

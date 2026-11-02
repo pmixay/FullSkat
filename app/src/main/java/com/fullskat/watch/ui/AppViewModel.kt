@@ -73,13 +73,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Learns the server's current default model and allowlist (they depend on the provider it runs). */
-    private fun refreshServerInfo() {
+    fun refreshServerInfo() {
         viewModelScope.launch {
             val cfg = container.settings.current()
             val token = cfg.token ?: return@launch
             try {
                 val me = container.api.me(cfg.serverUrl, token)
-                container.settings.saveServerModels(me.model, me.models, me.effort)
+                container.settings.saveServerModels(me.model, me.models, me.effort, me.modelEfforts, me.providers)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 // Offline, token or parsing problems surface on the first turn; the cached list stays usable.
@@ -93,7 +93,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 val deviceId = container.settings.deviceId()
                 val r = container.api.pair(passcode, deviceId, deviceName)
-                container.settings.savePairing(r.token, r.serverName, r.model, r.models, r.effort)
+                container.settings.savePairing(r.token, r.serverName, r.model, r.models, r.effort, r.modelEfforts, r.providers)
                 _pairState.value = PairUiState.Success(r.firstSetup)
             } catch (e: ApiException) {
                 _pairState.value = when (e) {

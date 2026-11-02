@@ -2,14 +2,14 @@
 
 The server half of FullSkat, a Wear OS voice assistant. The watch recognizes speech
 on-device, so the server never receives audio; it holds the API keys and relays chat
-completions to the Claude API (default) or OpenRouter. It stores no dialogs, only a passcode hash and the tokens it has issued.
+completions to the Claude API, OpenRouter and Kimi (any of them, at the same time). It stores no dialogs, only a passcode hash and the tokens it has issued.
 The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 ## Quick start with Docker
 
 ```sh
 cd server
-cp .env.example .env          # set ANTHROPIC_API_KEY (OPENROUTER_API_KEY only for LLM_PROVIDER=openrouter)
+cp .env.example .env          # set ANTHROPIC_API_KEY, OPENROUTER_API_KEY and/or KIMI_API_KEY
 docker compose up -d --build
 curl http://localhost:8080/healthz   # {"ok": true, "paired": false}
 ```
@@ -75,20 +75,55 @@ Rejections are `429` with a `Retry-After` header. Counters are in memory and res
 
 ## Chat models
 
-`LLM_PROVIDER` picks the chat backend:
+There is no provider switch. Every provider whose API key is set is a candidate; the server probes
+each one (a cheap authenticated request: Claude `models.list`, OpenRouter `/key`, Kimi `/models`) and
+offers its models to the watch only while the probe passes. A failed probe is retried after 30 s, a
+passed one is trusted for 5 min, and a rejected key during a chat disables the provider at once. If a
+key is revoked or a provider goes down its models disappear from the watch's picker by themselves, and
+come back when it works again. `/v1/me` reports the diagnosis (`providers`).
 
-* `anthropic` (default): the Claude API through the official SDK. `ANTHROPIC_MODEL`
-  (default `claude-haiku-5-5`) is the default model and the watch may request any model in
-  `ANTHROPIC_ALLOWED_MODELS` (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1). `ANTHROPIC_EFFORT`
-  (default `medium`) is sent as `output_config.effort`; set it empty to omit it.
-  `ANTHROPIC_MAX_TOKENS` caps one answer including thinking tokens.
-* `openrouter`: `OPENROUTER_MODEL` is the default; the watch may request any model listed in
-  `OPENROUTER_ALLOWED_MODELS`. `OPENROUTER_REASONING_EFFORT` (default `high`) is sent as
-  `{"reasoning": {"effort": ...}}`; set it empty to omit it for models that do not support
-  reasoning.
+Priority is Claude, then OpenRouter, then Kimi: the default model is the default model of the first
+working provider. Models are routed to the provider that lists them.
 
-The server tells the watch which models are allowed (`models` in the pairing and `/v1/me`
-responses), so the model picker always matches the active provider.
+* **Claude API**: `ANTHROPIC_MODEL` (default `claude-haiku-5-5`) and `ANTHROPIC_ALLOWED_MODELS`
+  (Haiku 5.5, Sonnet 5.5, Opus 5.5, Fable 5.1). `ANTHROPIC_EFFORT` (default `medium`) is the default
+  `output_config.effort`. `ANTHROPIC_MAX_TOKENS` caps one answer including thinking tokens.
+* **OpenRouter**: `OPENROUTER_MODEL` and `OPENROUTER_ALLOWED_MODELS` (default GPT-6.1 Terra and
+  GPT-6 Luna). `OPENROUTER_REASONING_EFFORT` (default `high`) is the default
+  `{"reasoning": {"effort": ...}}`. `OPENROUTER_MAX_TOKENS` caps one answer including reasoning.
+* **Kimi (Moonshot)**: `KIMI_MODEL` (default `kimi-k2.8-preview`) and `KIMI_ALLOWED_MODELS`
+  (K2.8 preview, K3.1 Pro), over the OpenAI-compatible API at `KIMI_BASE_URL`. The model ids are
+  Moonshot's own; check them against your Moonshot console if a request is rejected. Web search uses
+  Kimi's builtin `$web_search` tool: the server answers the model's search calls and asks again, at
+  most `WEB_SEARCH_MAX_USES` times per answer.
+
+The server tells the watch the models of the working providers, grouped by provider (`providers`),
+and the efforts each model supports (`model_efforts`).
+
+### Efforts
+
+Providers disagree about reasoning effort levels (Claude: low to max; Kimi K3: low, high, max, none;
+Gemini: minimal to high; Kimi K2.x: none at all), so the server asks where it can: OpenRouter's public
+model list (`reasoning.supported_efforts`), the Claude Models API (`capabilities.effort`). Kimi has no
+such endpoint, so `KIMI_EFFORTS` lists the levels (empty = not adjustable). The watch shows only the
+levels the selected model supports; a requested level the model lacks is moved to the nearest
+supported one, and a model that is not adjustable ignores it. Answers are cached for an hour.
+
+### Usage ring
+
+Each provider reports the share of its budget left, shown as a ring beside its name in the watch's
+model picker: OpenRouter credits (the key's spending limit, else account credits), Claude's token
+rate limit (from response headers; Anthropic has no balance endpoint), Kimi's balance (a ring only
+when `KIMI_BALANCE_FULL` says what 100% is; otherwise just the amount). Unknown means no ring.
+
+### Errors
+
+Failures reach the watch as `error` codes: `upstream_rate_limited` (provider pause, with
+`retry_after`), `upstream_quota` (credits or quota spent), `upstream_auth` (the provider rejected the
+server's key), `upstream_error`, plus `rate_limited`, `daily_limit` (`CHAT_PER_DAY`, HTTP 429),
+`no_provider` / `provider_unavailable` (HTTP 503) and `model_not_allowed` (HTTP 400). The watch shows
+the usage-limit ones (`rate_limited`, `daily_limit`, `upstream_quota`, `upstream_rate_limited`) as a
+separate block with an icon and the wait time.
 
 History sent upstream is trimmed to the last `MAX_HISTORY_MESSAGES` /
 `MAX_HISTORY_CHARS`.
@@ -98,7 +133,7 @@ History sent upstream is trimmed to the last `MAX_HISTORY_MESSAGES` /
 `SHOW_THINKING=true` (default) streams the model's reasoning summary to the watch as
 `thinking` events (see `docs/PROTOCOL.md`); the watch shows it collapsed under the answer. With
 the Claude API this sends `thinking: {"type": "adaptive", "display": "summarized"}`; with
-OpenRouter the `reasoning` deltas are forwarded when the model returns them. Set
+OpenRouter and Kimi the reasoning deltas are forwarded when the model returns them. Set
 `SHOW_THINKING=false` to omit the `thinking` request field and send no summaries.
 
 ### Web search
@@ -107,12 +142,11 @@ OpenRouter the `reasoning` deltas are forwarded when the model returns them. Set
 (news, weather, prices, scores). With the Claude API this is the `web_search` server tool, at
 most `WEB_SEARCH_MAX_USES` searches per answer (default 3); it has to be enabled for your
 organization in the Claude Console, and each search is billed on top of tokens. With
-OpenRouter the `web` plugin is used. Set `WEB_SEARCH=false` to turn it off.
+OpenRouter the `web` plugin is used; with Kimi its `$web_search` tool. Set `WEB_SEARCH=false` to turn it off.
 
 `WEB_SEARCH` is a master switch: the watch can send `"web_search": false` to turn search off for
 a request, but can never turn it on when the operator disabled it. Likewise the watch may send
-`"effort"` (`low` | `medium` | `high` | `xhigh` | `max`) per request to override
-`ANTHROPIC_EFFORT` / `OPENROUTER_REASONING_EFFORT` (for OpenRouter, `max` is sent as `xhigh`).
+`"effort"` per request to override the model's default (see Efforts above).
 The defaults are reported to the watch as `effort` and `web_search` in the pairing and `/v1/me`
 responses.
 
