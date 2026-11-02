@@ -7,10 +7,12 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_ALLOWED_MODELS = "openai/gpt-6.1-terra,openai/gpt-6-luna"
-# Kimi Code model ids (https://www.kimi.com/code/docs/en/); which ones work depends on the membership plan.
-DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,k3,kimi-for-coding"
-# Efforts documented for Kimi Code: K3 and kimi-for-coding take low/high/max, K3.1 Pro always thinks (max).
-DEFAULT_KIMI_MODEL_EFFORTS = {"k3": "low,high,max", "k3-256k": "low,high,max", "kimi-for-coding": "low,high,max", "k3.1-pro": ""}
+# Kimi Code model ids (https://www.kimi.com/code/docs/en/). "kimi-for-coding" is what the docs call K2.8 Preview.
+DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,kimi-for-coding"
+# Efforts per model: both take low/high/max. K3.1 Pro always thinks (max by default; thinking off is rejected),
+# so "none" is not offered, and the docs do not list its levels, only its sibling K3's (low/high/max) and
+# OpenRouter's catalog (max/high/low/none) agree on the rest.
+DEFAULT_KIMI_MODEL_EFFORTS = {"k3.1-pro": "low,high,max", "kimi-for-coding": "low,high,max"}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
 

@@ -128,7 +128,7 @@ def test_model_lists_per_provider(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     assert settings.provider_models("anthropic")[0] == "claude-haiku-5-5"
     assert settings.provider_models("openrouter") == ["openai/gpt-6.1-terra", "openai/gpt-6-luna"]
-    assert settings.provider_models("kimi") == ["k3.1-pro", "k3", "kimi-for-coding"]
+    assert settings.provider_models("kimi") == ["k3.1-pro", "kimi-for-coding"]
     assert settings.provider_for("k3.1-pro") == "kimi"
     assert settings.provider_for("openai/gpt-6-luna") == "openrouter"
     assert settings.provider_for("nope") is None
@@ -410,7 +410,7 @@ async def test_multi_llm_caches_probes_and_recovers(tmp_path: Path) -> None:
     assert flaky.probes == 1  # cached
     flaky.probe_error = None
     multi._health["kimi"] = Health(False, "upstream_error", "timeout", until=0.0)  # the retry window has passed
-    assert (await multi.models())[1] == ["k3.1-pro", "k3", "kimi-for-coding"]
+    assert (await multi.models())[1] == ["k3.1-pro", "kimi-for-coding"]
     assert flaky.probes == 2
 
 
@@ -440,9 +440,9 @@ def test_kimi_body(tmp_path: Path) -> None:
 
 async def test_kimi_code_efforts_follow_the_docs_per_model(tmp_path: Path) -> None:
     llm = KimiLLM(make_settings(tmp_path, kimi_api_key="k"), httpx.AsyncClient())
-    assert await llm.efforts("k3") == ModelEfforts(("low", "high", "max"), "")
-    assert await llm.efforts("kimi-for-coding") == ModelEfforts(("low", "high", "max"), "")
-    assert await llm.efforts("k3.1-pro") == ModelEfforts()  # thinking is always on, at max
+    # K3.1 Pro: thinking is required (off is rejected), so low/high/max but no "none".
+    assert await llm.efforts("k3.1-pro") == ModelEfforts(("low", "high", "max"), "")
+    assert await llm.efforts("kimi-for-coding") == ModelEfforts(("low", "high", "max"), "")  # K2.8 Preview
     assert await llm.efforts("k3.1-pro-highspeed") == ModelEfforts()  # undocumented: not adjustable
 
 
@@ -451,13 +451,13 @@ async def test_kimi_per_model_override_and_global_fallback(tmp_path: Path) -> No
         make_settings(
             tmp_path,
             kimi_api_key="k",
-            kimi_model_efforts={"k3": "low, high", "kimi-for-coding": ""},
+            kimi_model_efforts={"k3.1-pro": "low, high", "kimi-for-coding": ""},
             kimi_efforts="medium",
             kimi_default_effort="high",
         ),
         httpx.AsyncClient(),
     )
-    assert await llm.efforts("k3") == ModelEfforts(("low", "high"), "high")
+    assert await llm.efforts("k3.1-pro") == ModelEfforts(("low", "high"), "high")
     assert await llm.efforts("kimi-for-coding") == ModelEfforts()  # an empty override turns effort off
     assert await llm.efforts("other") == ModelEfforts(("medium",), "medium")  # the global list for the rest
 
@@ -480,9 +480,9 @@ async def test_kimi_catalog_is_opt_in(tmp_path: Path) -> None:
 
 
 def test_kimi_model_efforts_parse_from_json_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KIMI_MODEL_EFFORTS", '{"k3.1-pro": "low,high,max", "k3": ""}')
+    monkeypatch.setenv("KIMI_MODEL_EFFORTS", '{"k3.1-pro": "high,max", "kimi-for-coding": ""}')
     settings = Settings(_env_file=None, data_dir=tmp_path)
-    assert settings.kimi_model_efforts == {"k3.1-pro": "low,high,max", "k3": ""}
+    assert settings.kimi_model_efforts == {"k3.1-pro": "high,max", "kimi-for-coding": ""}
 
 
 async def test_kimi_runs_the_web_search_tool_loop(tmp_path: Path) -> None:
@@ -650,9 +650,9 @@ async def test_kimi_drops_web_search_when_the_endpoint_rejects_the_tool(tmp_path
         return httpx.Response(200, content=sse({"choices": [{"delta": {"content": "ok"}, "finish_reason": "stop"}]}))
 
     llm = KimiLLM(make_settings(tmp_path, kimi_api_key="k"), mock_client(handler))
-    assert [i async for i in llm.stream([{"role": "user", "content": "q"}], "k3")] == ["ok"]
+    assert [i async for i in llm.stream([{"role": "user", "content": "q"}], "kimi-for-coding")] == ["ok"]
     assert "tools" in requests[0] and "tools" not in requests[1]
     # Remembered: the next question does not try the tool again.
     scripted = len(requests)
-    assert [i async for i in llm.stream([{"role": "user", "content": "q2"}], "k3")] == ["ok"]
+    assert [i async for i in llm.stream([{"role": "user", "content": "q2"}], "kimi-for-coding")] == ["ok"]
     assert len(requests) == scripted + 1 and "tools" not in requests[-1]

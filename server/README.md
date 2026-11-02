@@ -95,8 +95,9 @@ working provider. Models are routed to the provider that lists them.
   `KIMI_BASE_URL` (overseas `https://api.kimi.ai/coding/v1`, mainland China
   `https://api.kimi.com/coding/v1`), with an API key from the
   [Kimi Code console](https://www.kimi.com/code/console). `KIMI_MODEL` (default `k3.1-pro`) and
-  `KIMI_ALLOWED_MODELS` (`k3.1-pro,k3,kimi-for-coding`; also `k3-256k` and the `*-highspeed` variants,
-  depending on your plan, see the [docs](https://www.kimi.com/code/docs/en/)). The server sends its own
+  `KIMI_ALLOWED_MODELS` (`k3.1-pro,kimi-for-coding`; `kimi-for-coding` is what the
+  [docs](https://www.kimi.com/code/docs/en/) call K2.8 Preview; `k3`, `k3-256k` and the `*-highspeed` variants
+  can be added, depending on your plan). The server sends its own
   `User-Agent` (`FullSkat/1.0`), since Kimi Code asks clients to keep their real identifier. Web
   search offers Kimi's builtin `$web_search` tool: the server answers the model's search calls and asks
   again, at most `WEB_SEARCH_MAX_USES` times per answer. Kimi Code does not document that tool, so if the
@@ -113,9 +114,11 @@ Gemini: minimal to high; some models none at all) and they differ per model, so 
 it can: OpenRouter's public model list (`reasoning.supported_efforts`) and the Claude Models API
 (`capabilities.effort`). Kimi Code has no such endpoint, so for each Kimi model, in order:
 
-1. `KIMI_MODEL_EFFORTS`, a per-model list as JSON. The default follows Kimi Code's docs:
-   `{"k3":"low,high,max","k3-256k":"low,high,max","kimi-for-coding":"low,high,max","k3.1-pro":""}`
-   (K3.1 Pro always thinks at max, so it is not adjustable; an empty string means not adjustable);
+1. `KIMI_MODEL_EFFORTS`, a per-model list as JSON. The default is
+   `{"k3.1-pro":"low,high,max","kimi-for-coding":"low,high,max"}`. The docs say K3.1 Pro always thinks
+   (max by default, thinking off is rejected), so it has no `none` level; they do not list its levels, but
+   its sibling K3 takes low/high/max and OpenRouter's catalog lists K3.1 Pro as max/high/low/none. An empty
+   string means not adjustable;
 2. only with `KIMI_EFFORTS_FROM_CATALOG=true`: OpenRouter's public entry `moonshotai/<model>`;
 3. `KIMI_EFFORTS`, one list for every model that has neither (empty = not adjustable).
 
