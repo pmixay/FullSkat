@@ -126,13 +126,18 @@ class OpenRouterLLM:
             "model": model,
             "messages": messages,
             "stream": True,
-            "max_tokens": self._settings.max_completion_tokens,
+            "max_tokens": self._settings.openrouter_max_tokens,
             "usage": {"include": True},
         }
+        reasoning: dict[str, Any] = {}
         effective_effort = effort or self._settings.reasoning_effort
         if effective_effort:
             # OpenRouter has no "max" level; its top level is "xhigh".
-            body["reasoning"] = {"effort": "xhigh" if effective_effort == "max" else effective_effort}
+            reasoning["effort"] = "xhigh" if effective_effort == "max" else effective_effort
+        if not self._settings.show_thinking:
+            reasoning["exclude"] = True  # still reasons, but the summary is not returned or streamed
+        if reasoning:
+            body["reasoning"] = reasoning
         if _web_search_enabled(self._settings, web_search):
             body["plugins"] = [{"id": "web", "max_results": self._settings.web_search_max_uses}]
         return body

@@ -102,8 +102,20 @@ def test_default_provider_is_anthropic_with_haiku(tmp_path: Path) -> None:
 def test_openrouter_provider_uses_its_own_models(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, llm_provider="openrouter")
     assert settings.chat_model == "openai/gpt-5.6-luna"
-    assert "anthropic/claude-sonnet-5" in settings.allowed_models
+    assert "anthropic/claude-sonnet-5.5" in settings.allowed_models
     assert isinstance(create_llm(settings, httpx.AsyncClient()), OpenRouterLLM)
+
+
+def test_openrouter_body_token_cap_and_thinking_toggle(tmp_path: Path) -> None:
+    messages = [{"role": "user", "content": "hi"}]
+    llm = OpenRouterLLM(make_settings(tmp_path, llm_provider="openrouter"), httpx.AsyncClient())
+    body = llm._body(messages, "anthropic/claude-sonnet-5.5")
+    assert body["max_tokens"] == 4096  # room for reasoning plus the answer
+    assert body["reasoning"] == {"effort": "high"}  # summary stays visible by default
+    hidden = OpenRouterLLM(
+        make_settings(tmp_path, llm_provider="openrouter", show_thinking=False), httpx.AsyncClient()
+    )
+    assert hidden._body(messages, "m")["reasoning"] == {"effort": "high", "exclude": True}
 
 
 async def test_anthropic_request_has_system_effort_and_web_search(tmp_path: Path) -> None:

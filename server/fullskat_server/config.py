@@ -10,7 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_ALLOWED_MODELS = (
     "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
-    "google/gemini-3.5-flash,anthropic/claude-sonnet-5"
+    "google/gemini-3.5-flash,anthropic/claude-haiku-5.5,anthropic/claude-sonnet-5.5,"
+    "anthropic/claude-opus-5.5,anthropic/claude-fable-5.1"
 )
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
@@ -43,6 +44,8 @@ class Settings(BaseSettings):
     openrouter_reasoning_effort: str = "high"
     openrouter_allowed_models: str = DEFAULT_ALLOWED_MODELS
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Upper bound for one answer including reasoning tokens (a small cap lets reasoning eat the whole answer).
+    openrouter_max_tokens: int = Field(default=4096, ge=1)
 
     # Identity and storage
     server_name: str = "FullSkat"
@@ -58,7 +61,6 @@ class Settings(BaseSettings):
     # Chat shaping
     max_history_messages: int = Field(default=24, ge=1)
     max_history_chars: int = Field(default=12000, ge=1)
-    max_completion_tokens: int = Field(default=700, ge=1)
 
     # Networking / misc
     trust_proxy_headers: bool = False
