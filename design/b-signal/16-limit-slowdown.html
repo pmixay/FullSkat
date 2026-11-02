@@ -1,0 +1,58 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=216,initial-scale=1"><title>Signal limit</title><style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:216px;height:216px;overflow:hidden;background:#000}
+body{font-family:Roboto,"Google Sans",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.scr{position:relative;width:216px;height:216px;overflow:hidden}
+.ab{position:absolute}
+.ic{display:block;flex:none}
+.row{display:flex;align-items:center}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+.scr{color:#FFFFFF;font-feature-settings:"tnum"}
+.time{position:absolute;top:8px;left:0;right:0;text-align:center;font-size:12px;font-weight:700;color:#FFFFFF}
+.tile{display:flex;align-items:center;justify-content:center;flex:none}
+.list{position:absolute;left:0;right:0;display:flex;flex-direction:column}
+.r{height:44px;display:flex;align-items:center;gap:9px;padding:0 10px 0 8px;width:100%;border-bottom:1px solid #2C2C2C}
+.t1{font-size:13.5px;font-weight:600;line-height:17px}
+.t2{font-size:11px;color:#B3B3B3;line-height:14px;font-weight:500}
+.mono{font-family:"JetBrains Mono",monospace}
+.ubub{font-size:14px;line-height:18px;font-weight:600;padding:6px 10px;border-radius:10px 10px 2px 10px;background:#FFD60A;color:#000;width:max-content}
+.ans{font-size:14px;line-height:19px}
+.li{display:flex;gap:7px;align-items:baseline;margin-top:2px}
+.sq{flex:none;width:7px;height:7px;background:#40C8FF;transform:translateY(-1px)}
+code{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:#FF4FA3;background:#2A0E1D;border-radius:3px;padding:0 3px;font-weight:600}
+.tab{position:absolute;bottom:0;left:78px;width:60px;height:30px;border-radius:12px 12px 0 0;display:flex;justify-content:center;padding-top:5px}
+.key{width:34px;height:34px;border-radius:9px;background:#242424;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.sw{width:30px;height:18px;border-radius:5px;position:relative;flex:none}
+.sw i{position:absolute;top:3px;width:12px;height:12px;border-radius:3px;background:#000}
+</style></head><body style="background:#000"><div class="scr"><div class="list" style="top:24px;gap:6px;opacity:.25">
+  <div class="ubub" data-fit="6" data-r="8" data-al="e" data-min="60">Что такое бозон Хиггса?</div>
+  <div class="ans" style="padding:0 26px 0 30px">Это частица, которая придаёт массу другим</div></div>
+<div class="ab" style="left:28px;top:54px;width:160px;height:134px;border-radius:16px;background:#000;border:2px solid #FFD60A;overflow:hidden;text-align:center">
+  <div style="height:10px;background:repeating-linear-gradient(135deg,#FFD60A 0 7px,#000 7px 14px)"></div>
+  <div style="font-size:32px;font-weight:900;color:#FFD60A;line-height:38px;margin-top:8px;letter-spacing:-1px">40<span style="font-size:16px">s</span></div>
+  <div style="font-size:14px;font-weight:800;margin-top:2px">Slow down</div>
+  <div style="font-size:11.5px;font-weight:600;color:#B3B3B3;margin-top:1px">Too many requests</div>
+</div></div><script>
+(function(){
+  var C=108;
+  function chord(top,bot,m,r){
+    var yf=Math.max(Math.abs(top-C),Math.abs(bot-C));
+    var ins=0.3*r; yf=Math.max(0,yf-ins);
+    var R=C-m; if(yf>=R) return 0; return 2*Math.sqrt(R*R-yf*yf)+2*ins;
+  }
+  document.querySelectorAll('[data-fit]').forEach(function(el){
+    var m=+el.dataset.fit||0, r=+(el.dataset.r||0), al=el.dataset.al||'c', minW=+(el.dataset.min||120), s=1;
+    for(var k=0;k<3;k++){
+      el.style.maxWidth='';
+      var b=el.getBoundingClientRect(), w=chord(b.top,b.bottom,m,r);
+      if(w<minW){s=Math.max(.5,w/Math.min(b.width,176)); w=Math.min(b.width,176);} else s=1;
+      el.style.maxWidth=Math.floor(w)+'px';
+    }
+    var b=el.getBoundingClientRect(), w=Math.max(minW,chord(b.top,b.bottom,m,r)), x;
+    if(al==='e') x=C+w/2-b.width; else if(al==='s') x=C-w/2; else x=C-b.width/2;
+    if(s<1){x=C-b.width/2; el.style.opacity=(0.25+0.75*s).toFixed(2);}
+    el.style.transform='translateX('+(x-b.left)+'px)'+(s<1?' scale('+s.toFixed(3)+')':'');
+  });
+})();
+</script></body></html>
