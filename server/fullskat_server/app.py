@@ -42,7 +42,11 @@ def _error_response(status_code: int, code: str, message: str, headers: dict[str
 
 
 def _rate_limited(decision: Decision) -> ApiError:
-    message = "too many failed pairing attempts, try later" if decision.reason == "locked" else "rate limit exceeded"
+    messages = {
+        "locked": "too many failed pairing attempts, try later",
+        "daily_limit": "daily message limit reached",
+    }
+    message = messages.get(decision.reason, "rate limit exceeded")
     return ApiError(429, decision.reason, message, headers={"Retry-After": str(decision.retry_after)})
 
 
@@ -65,7 +69,7 @@ class ChatRequest(BaseModel):
     locale: str = Field(default="", max_length=32)
     model: str | None = None
     messages: list[ChatMessage] = Field(min_length=1)
-    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     web_search: bool | None = None
 
 
@@ -93,11 +97,18 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-def _default_effort(settings: Settings) -> str:
-    """The server's default reasoning effort for the active provider ("" if none)."""
-    if settings.llm_provider == "anthropic":
-        return settings.anthropic_effort
-    return settings.openrouter_reasoning_effort
+async def _model_info(app: FastAPI) -> dict[str, Any]:
+    """Default model, models of the working providers and, per model, the efforts it supports."""
+    default, models = await app.state.llm.models()
+    efforts = await app.state.llm.model_efforts(models)
+    info = efforts.get(default)
+    return {
+        "model": default,
+        "models": models,
+        "effort": info.default if info else "",
+        "model_efforts": {model: e.to_json() for model, e in efforts.items()},
+        "providers": await app.state.llm.providers_info(),
+    }
 
 
 def _limits(settings: Settings) -> dict[str, int]:
@@ -116,9 +127,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info(
-            "FullSkat server ready: provider=%s model=%s web_search=%s data_dir=%s",
-            settings.llm_provider,
-            settings.chat_model,
+            "FullSkat server ready: providers=%s web_search=%s data_dir=%s",
+            ",".join(settings.configured_providers) or "none (set ANTHROPIC_API_KEY, OPENROUTER_API_KEY or KIMI_API_KEY)",
             settings.web_search,
             settings.data_dir,
         )
@@ -198,9 +208,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "token": result.token,
             "first_setup": result.first_setup,
             "server_name": settings.server_name,
-            "model": settings.chat_model,
-            "models": settings.allowed_models,
-            "effort": _default_effort(settings),
+            **await _model_info(app),
             "web_search": settings.web_search,
         }
         return JSONResponse(payload, status_code=201 if result.first_setup else 200)
@@ -211,9 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "device_id": record.device_id,
             "device_name": record.device_name,
-            "model": settings.chat_model,
-            "models": settings.allowed_models,
-            "effort": _default_effort(settings),
+            **await _model_info(app),
             "web_search": settings.web_search,
             "limits": _limits(settings),
         }
@@ -234,8 +240,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body = ChatRequest.model_validate_json(raw)
         except ValidationError as exc:
             raise ApiError(400, "invalid_request", _describe_validation(exc)) from exc
-        model = body.model or settings.chat_model
-        if model not in settings.allowed_models:
+        default_model, available = await app.state.llm.models()
+        if not available:
+            raise ApiError(503, "no_provider", "no model provider is working right now")
+        model = body.model or default_model
+        if model not in available:
+            provider = settings.provider_for(model)
+            if provider in settings.configured_providers:
+                raise ApiError(503, "provider_unavailable", f"the provider of {model!r} is not working right now")
             raise ApiError(400, "model_not_allowed", f"model {model!r} is not in the server allowlist")
 
         history = trim_history(
@@ -264,7 +276,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     parts.append(item)
                     yield _sse("delta", {"text": item})
             except LLMError as exc:
-                yield _sse("error", {"error": exc.code, "message": exc.message})
+                payload: dict[str, Any] = {"error": exc.code, "message": exc.message}
+                if exc.retry_after:
+                    payload["retry_after"] = exc.retry_after
+                yield _sse("error", payload)
                 return
             except Exception:
                 log.exception("chat stream failed")
