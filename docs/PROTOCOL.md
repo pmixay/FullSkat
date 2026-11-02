@@ -1,7 +1,7 @@
 # FullSkat client–server protocol
 
 The watch app (client) talks to a small server that holds the provider keys
-(Claude API, OpenRouter and/or Kimi) and forwards chat requests. The server stores nothing about
+(Claude API, OpenRouter and/or Kimi Code) and forwards chat requests. The server stores nothing about
 dialogs; dialogs live on the watch. Speech recognition runs on the watch; no audio is
 ever sent to the server.
 

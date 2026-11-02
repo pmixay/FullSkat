@@ -19,6 +19,8 @@ from .efforts import ModelEfforts, normalize_efforts, pick_default, resolve_effo
 log = logging.getLogger(__name__)
 
 REFERER = "https://github.com/pmixay/FullSkat"
+# Kimi Code asks clients to keep their real identifier; this is ours.
+USER_AGENT = "FullSkat/1.0 (+https://github.com/pmixay/FullSkat)"
 TITLE = "FullSkat"
 
 # Basic server-side web search: works on every Claude model, no beta header.
@@ -189,6 +191,8 @@ class _ChatCompletionsLLM:
     """Shared client for OpenAI-compatible streaming endpoints (OpenRouter, Kimi)."""
 
     label = "upstream"
+    # HTTP statuses of the probe that still mean "the key is accepted" (a rate limit, or an endpoint the vendor lacks).
+    probe_ok_statuses: tuple[int, ...] = (429,)
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         self._settings = settings
@@ -204,6 +208,7 @@ class _ChatCompletionsLLM:
     def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._api_key()}",
+            "User-Agent": USER_AGENT,
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
         }
@@ -221,12 +226,14 @@ class _ChatCompletionsLLM:
         """Cheap authenticated request that shows the key works. Raises LLMError when it does not."""
         try:
             response = await self._client.get(
-                self._probe_url(), headers={"Authorization": f"Bearer {self._api_key()}"}, timeout=PROBE_TIMEOUT
+                self._probe_url(),
+                headers={"Authorization": f"Bearer {self._api_key()}", "User-Agent": USER_AGENT},
+                timeout=PROBE_TIMEOUT,
             )
         except httpx.HTTPError as exc:
             raise LLMError("upstream_error", f"could not reach the model provider: {exc}") from exc
-        if response.status_code == 429:
-            return  # rate limited, but the key is accepted
+        if response.status_code in self.probe_ok_statuses:
+            return
         if response.status_code >= 400:
             message = extract_upstream_message(response.content)
             raise LLMError(error_code_for_status(response.status_code, message), message)
@@ -439,14 +446,17 @@ class OpenRouterLLM(_ChatCompletionsLLM):
 
 
 class KimiLLM(_ChatCompletionsLLM):
-    """Streams from Kimi (Moonshot) and runs its builtin `$web_search` tool."""
+    """Streams from the Kimi Code platform (OpenAI-compatible) and runs the builtin `$web_search` tool when it is offered."""
 
-    label = "Kimi"
+    label = "Kimi Code"
     WEB_SEARCH = "$web_search"
+    # Kimi Code documents no /models endpoint for keys, so a 404 there is no reason to call the key bad.
+    probe_ok_statuses = (404, 405, 429)
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         super().__init__(settings, client)
         self._catalog = EffortCatalog(settings, client)
+        self._search_rejected = False  # set when the endpoint refused the $web_search tool once
 
     def _api_key(self) -> str:
         return self._settings.kimi_api_key
@@ -467,7 +477,7 @@ class KimiLLM(_ChatCompletionsLLM):
             "model": model,
             "messages": messages,
             "stream": True,
-            "max_completion_tokens": self._settings.kimi_max_tokens,
+            "max_tokens": self._settings.kimi_max_tokens,
             "stream_options": {"include_usage": True},
         }
         if effort == "none":
@@ -479,19 +489,23 @@ class KimiLLM(_ChatCompletionsLLM):
         return body
 
     async def usage(self) -> UsageLeft | None:
-        """Account balance; a share for the ring only if KIMI_BALANCE_FULL says what 100% is."""
-        url = f"{self._settings.kimi_base_url.rstrip('/')}/users/me/balance"
+        """Quota left of the Kimi Code membership, from GET <base>/usages (best effort: not in the public docs)."""
+        url = f"{self._settings.kimi_base_url.rstrip('/')}/usages"
         try:
             response = await self._client.get(
-                url, headers={"Authorization": f"Bearer {self._api_key()}"}, timeout=PROBE_TIMEOUT
+                url,
+                headers={"Authorization": f"Bearer {self._api_key()}", "User-Agent": USER_AGENT},
+                timeout=PROBE_TIMEOUT,
             )
-            balance = float(response.json()["data"]["available_balance"])
+            response.raise_for_status()
+            body = response.json()
+            usage = body.get("usage") if isinstance(body, dict) else None
+            limit, remaining = float(usage["limit"]), float(usage["remaining"])
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            log.debug("Kimi balance unavailable: %s", exc)
+            log.debug("Kimi Code usage unavailable: %s", exc)
             return None
-        symbol = "$" if "moonshot.ai" in self._settings.kimi_base_url else "¥"
-        full = self._settings.kimi_balance_full
-        return UsageLeft(_share(balance, full) if full > 0 else None, f"{symbol}{max(balance, 0.0):.2f}")
+        share = _share(remaining, limit)
+        return UsageLeft(share, f"{round(share * 100)}%" if share is not None else "")
 
     async def efforts(self, model: str) -> ModelEfforts:
         """Efforts of one Kimi model. Moonshot has no endpoint for this, so, in order:
@@ -529,18 +543,28 @@ class KimiLLM(_ChatCompletionsLLM):
         if not self._api_key():
             raise LLMError("upstream_auth", self._missing_key_message())
         conversation: list[dict[str, Any]] = list(messages)
-        can_search = _web_search_enabled(self._settings, web_search)
+        can_search = _web_search_enabled(self._settings, web_search) and not self._search_rejected
         searches = 0
         prompt_tokens = completion_tokens = 0
         usage_seen = False
         while True:
             body = self._body(conversation, model, effort, can_search and searches < self._settings.web_search_max_uses)
             finished = _Round()
-            async for item in self._round(body):
-                if isinstance(item, _Round):
-                    finished = item
-                else:
-                    yield item
+            try:
+                async for item in self._round(body):
+                    if isinstance(item, _Round):
+                        finished = item
+                    else:
+                        yield item
+            except LLMError as exc:
+                # The endpoint may not offer the builtin search tool (Kimi Code does not document it): drop it,
+                # remember that, and ask again without tools. Nothing was yielded yet: HTTP errors come first.
+                if "tools" in body and exc.code == "upstream_error" and not finished.content:
+                    log.warning("Kimi rejected the $web_search tool (%s); continuing without web search", exc.message)
+                    self._search_rejected = True
+                    can_search = False
+                    continue
+                raise
             usage_seen = usage_seen or finished.has_usage
             prompt_tokens += finished.prompt_tokens
             completion_tokens += finished.completion_tokens

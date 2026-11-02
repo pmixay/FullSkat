@@ -2,7 +2,7 @@
 
 The server half of FullSkat, a Wear OS voice assistant. The watch recognizes speech
 on-device, so the server never receives audio; it holds the API keys and relays chat
-completions to the Claude API, OpenRouter and Kimi (any of them, at the same time). It stores no dialogs, only a passcode hash and the tokens it has issued.
+completions to the Claude API, OpenRouter and the Kimi Code platform (any of them, at the same time). It stores no dialogs, only a passcode hash and the tokens it has issued.
 The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 ## Quick start with Docker
@@ -91,38 +91,46 @@ working provider. Models are routed to the provider that lists them.
 * **OpenRouter**: `OPENROUTER_MODEL` and `OPENROUTER_ALLOWED_MODELS` (default GPT-6.1 Terra and
   GPT-6 Luna). `OPENROUTER_REASONING_EFFORT` (default `high`) is the default
   `{"reasoning": {"effort": ...}}`. `OPENROUTER_MAX_TOKENS` caps one answer including reasoning.
-* **Kimi (Moonshot)**: `KIMI_MODEL` (default `kimi-k2.8-preview`) and `KIMI_ALLOWED_MODELS`
-  (K2.8 preview, K3.1 Pro), over the OpenAI-compatible API at `KIMI_BASE_URL`. The model ids are
-  Moonshot's own; check them against your Moonshot console if a request is rejected. Web search uses
-  Kimi's builtin `$web_search` tool: the server answers the model's search calls and asks again, at
-  most `WEB_SEARCH_MAX_USES` times per answer.
+* **Kimi Code platform** (`KIMI_*`): the OpenAI-compatible API of a Kimi Code membership at
+  `KIMI_BASE_URL` (overseas `https://api.kimi.ai/coding/v1`, mainland China
+  `https://api.kimi.com/coding/v1`), with an API key from the
+  [Kimi Code console](https://www.kimi.com/code/console). `KIMI_MODEL` (default `k3.1-pro`) and
+  `KIMI_ALLOWED_MODELS` (`k3.1-pro,k3,kimi-for-coding`; also `k3-256k` and the `*-highspeed` variants,
+  depending on your plan, see the [docs](https://www.kimi.com/code/docs/en/)). The server sends its own
+  `User-Agent` (`FullSkat/1.0`), since Kimi Code asks clients to keep their real identifier. Web
+  search offers Kimi's builtin `$web_search` tool: the server answers the model's search calls and asks
+  again, at most `WEB_SEARCH_MAX_USES` times per answer. Kimi Code does not document that tool, so if the
+  endpoint rejects it the server drops it, logs a warning and answers without web search from then on.
+  The usage ring reads `GET <base>/usages`, which is not in the public docs; if it fails there is no ring.
 
 The server tells the watch the models of the working providers, grouped by provider (`providers`),
 and the efforts each model supports (`model_efforts`).
 
 ### Efforts
 
-Providers disagree about reasoning effort levels (Claude: low to max; Kimi K3: low, high, max, none;
-Gemini: minimal to high; Kimi K2.x: none at all) and they differ per model, so the server asks where
+Providers disagree about reasoning effort levels (Claude: low to max; Kimi K3: low, high, max;
+Gemini: minimal to high; some models none at all) and they differ per model, so the server asks where
 it can: OpenRouter's public model list (`reasoning.supported_efforts`) and the Claude Models API
-(`capabilities.effort`). Moonshot has no such endpoint, so for each Kimi model the server uses, in order:
+(`capabilities.effort`). Kimi Code has no such endpoint, so for each Kimi model, in order:
 
-1. `KIMI_MODEL_EFFORTS`, your own per-model list as JSON, for example
-   `{"kimi-k3.1-pro":"low,high,max","kimi-k2.8-preview":""}` (an empty string means not adjustable);
-2. OpenRouter's public entry `moonshotai/<model>` (no key needed; `KIMI_EFFORTS_FROM_CATALOG=false`
-   turns this off), which knows K3.1 Pro;
+1. `KIMI_MODEL_EFFORTS`, a per-model list as JSON. The default follows Kimi Code's docs:
+   `{"k3":"low,high,max","k3-256k":"low,high,max","kimi-for-coding":"low,high,max","k3.1-pro":""}`
+   (K3.1 Pro always thinks at max, so it is not adjustable; an empty string means not adjustable);
+2. only with `KIMI_EFFORTS_FROM_CATALOG=true`: OpenRouter's public entry `moonshotai/<model>`;
 3. `KIMI_EFFORTS`, one list for every model that has neither (empty = not adjustable).
 
-A model nobody knows, such as a preview, is therefore not adjustable until you list it. The watch shows
+An unknown model, such as a preview, is therefore not adjustable until you list it. The watch shows
 only the levels the selected model supports; a requested level the model lacks is moved to the nearest
-supported one, and a model that is not adjustable ignores it. Answers are cached for an hour.
+supported one, and a model that is not adjustable ignores it. The chosen level is sent as
+`reasoning_effort`; Kimi Code does not document the parameter name, so none is sent unless the watch
+picks a level. Answers are cached for an hour.
 
 ### Usage ring
 
 Each provider reports the share of its budget left, shown as a ring beside its name in the watch's
 model picker: OpenRouter credits (the key's spending limit, else account credits), Claude's token
-rate limit (from response headers; Anthropic has no balance endpoint), Kimi's balance (a ring only
-when `KIMI_BALANCE_FULL` says what 100% is; otherwise just the amount). Unknown means no ring.
+rate limit (from response headers; Anthropic has no balance endpoint), Kimi Code's membership quota.
+Unknown means no ring.
 
 ### Errors
 

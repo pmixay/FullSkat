@@ -193,10 +193,10 @@ async def test_me(client: AsyncClient) -> None:
 async def test_pair_and_me_report_models_and_efforts_of_working_providers(tmp_path: Path) -> None:
     app = create_app(settings=Settings(_env_file=None, data_dir=tmp_path, web_search=False))
     app.state.llm = FakeLLM(
-        model_list=["openai/gpt-6.1-terra", "openai/gpt-6-luna", "kimi-k3.1-pro"],
+        model_list=["openai/gpt-6.1-terra", "openai/gpt-6-luna", "k3.1-pro"],
         efforts={
             "openai/gpt-6.1-terra": ModelEfforts(("low", "high", "max"), "high"),
-            "kimi-k3.1-pro": ModelEfforts(),
+            "k3.1-pro": ModelEfforts(),
         },
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -204,10 +204,10 @@ async def test_pair_and_me_report_models_and_efforts_of_working_providers(tmp_pa
         assert paired["model"] == "openai/gpt-6.1-terra"  # the first working provider sets the default
         assert paired["effort"] == "high"
         assert paired["web_search"] is False
-        assert paired["models"] == ["openai/gpt-6.1-terra", "openai/gpt-6-luna", "kimi-k3.1-pro"]
+        assert paired["models"] == ["openai/gpt-6.1-terra", "openai/gpt-6-luna", "k3.1-pro"]
         me = (await client.get("/v1/me", headers={"Authorization": f"Bearer {paired['token']}"})).json()
         assert me["model_efforts"]["openai/gpt-6.1-terra"] == {"efforts": ["low", "high", "max"], "default": "high"}
-        assert me["model_efforts"]["kimi-k3.1-pro"] == {"efforts": [], "default": ""}
+        assert me["model_efforts"]["k3.1-pro"] == {"efforts": [], "default": ""}
         assert set(me["model_efforts"]) == set(me["models"])
 
 
@@ -223,7 +223,7 @@ async def test_chat_without_a_working_provider_or_with_a_down_one(tmp_path: Path
         assert none.status_code == 503 and none.json()["error"] == "no_provider"
 
         app.state.llm = FakeLLM(model_list=["claude-haiku-5-5"])
-        down = await client.post("/v1/chat", json={**chat, "model": "kimi-k3.1-pro"}, headers=headers)
+        down = await client.post("/v1/chat", json={**chat, "model": "k3.1-pro"}, headers=headers)
         assert down.status_code == 503 and down.json()["error"] == "provider_unavailable"
         unknown = await client.post("/v1/chat", json={**chat, "model": "gpt-9"}, headers=headers)
         assert unknown.status_code == 400 and unknown.json()["error"] == "model_not_allowed"

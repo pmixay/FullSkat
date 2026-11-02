@@ -7,7 +7,10 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_ALLOWED_MODELS = "openai/gpt-6.1-terra,openai/gpt-6-luna"
-DEFAULT_KIMI_ALLOWED_MODELS = "kimi-k2.8-preview,kimi-k3.1-pro"
+# Kimi Code model ids (https://www.kimi.com/code/docs/en/); which ones work depends on the membership plan.
+DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,k3,kimi-for-coding"
+# Efforts documented for Kimi Code: K3 and kimi-for-coding take low/high/max, K3.1 Pro always thinks (max).
+DEFAULT_KIMI_MODEL_EFFORTS = {"k3": "low,high,max", "k3-256k": "low,high,max", "kimi-for-coding": "low,high,max", "k3.1-pro": ""}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
 
 
@@ -45,23 +48,23 @@ class Settings(BaseSettings):
     # Upper bound for one answer including reasoning tokens (a small cap lets reasoning eat the whole answer).
     openrouter_max_tokens: int = Field(default=4096, ge=1)
 
-    # Kimi / Moonshot (chat, OpenAI-compatible API with its own $web_search tool)
+    # Kimi Code platform (chat, OpenAI-compatible API of the Kimi Code membership, with an API key from the
+    # Kimi Code console). Overseas: https://api.kimi.ai/coding/v1, mainland China: https://api.kimi.com/coding/v1
     kimi_api_key: str = ""
-    kimi_model: str = "kimi-k2.8-preview"
+    kimi_model: str = "k3.1-pro"
     kimi_allowed_models: str = DEFAULT_KIMI_ALLOWED_MODELS
-    kimi_base_url: str = "https://api.moonshot.ai/v1"
-    kimi_max_tokens: int = Field(default=4096, ge=1)
-    # Effort levels per Kimi model. Moonshot has no endpoint that lists them, so they come from, in order:
-    # KIMI_MODEL_EFFORTS (JSON, per model, "" = not adjustable), OpenRouter's public model list
-    # (moonshotai/<model>; turn off with KIMI_EFFORTS_FROM_CATALOG=false) and KIMI_EFFORTS (comma-separated,
-    # e.g. "none,low,high"), the list for every model without its own; empty = not adjustable.
-    kimi_model_efforts: dict[str, str] = Field(default_factory=dict)
-    kimi_efforts_from_catalog: bool = True
+    kimi_base_url: str = "https://api.kimi.ai/coding/v1"
+    # Upper bound for one answer including thinking (K3.1 Pro always thinks, at max effort by default).
+    kimi_max_tokens: int = Field(default=8192, ge=1)
+    # Effort levels per Kimi model, since they differ and the API has no endpoint that lists them. In order:
+    # KIMI_MODEL_EFFORTS (JSON, per model; "" = not adjustable; the default follows Kimi Code's docs),
+    # OpenRouter's public model list (moonshotai/<model>, only with KIMI_EFFORTS_FROM_CATALOG=true; its model
+    # ids and rules are those of the Moonshot API, not Kimi Code) and KIMI_EFFORTS (comma-separated, e.g.
+    # "low,high"), the list for every model without its own; empty = not adjustable.
+    kimi_model_efforts: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_KIMI_MODEL_EFFORTS))
+    kimi_efforts_from_catalog: bool = False
     kimi_efforts: str = ""
     kimi_default_effort: str = ""
-    # Kimi reports only an absolute balance. The balance that counts as "100%" for the watch's usage ring
-    # (e.g. your last top-up); 0 shows the balance without a ring.
-    kimi_balance_full: float = Field(default=0.0, ge=0)
 
     # Identity and storage
     server_name: str = "FullSkat"
