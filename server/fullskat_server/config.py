@@ -14,9 +14,10 @@ DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,kimi-for-coding"
 # OpenRouter's catalog (max/high/low/none) agree on the rest.
 DEFAULT_KIMI_MODEL_EFFORTS = {"k3.1-pro": "low,high,max", "kimi-for-coding": "low,high,max"}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
+DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.1-sol,gpt-6-astra"
 
 
-PROVIDERS = ("anthropic", "openrouter", "kimi")
+PROVIDERS = ("anthropic", "openrouter", "kimi", "openai")
 
 
 class Settings(BaseSettings):
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Chat providers are not pinned: every provider with an API key set is probed (see llm.MultiLLM) and
-    # its models are offered to the watch for as long as the probe succeeds. Priority: anthropic, openrouter, kimi.
+    # its models are offered to the watch for as long as the probe succeeds. Priority: anthropic, openrouter, kimi, openai.
     # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
     web_search: bool = True
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
@@ -68,6 +69,16 @@ class Settings(BaseSettings):
     kimi_efforts: str = ""
     kimi_default_effort: str = ""
 
+    # OpenAI Responses API, directly or through a gateway such as Codex LB.
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-6.1-terra"
+    openai_allowed_models: str = DEFAULT_OPENAI_ALLOWED_MODELS
+    openai_reasoning_effort: str = "medium"
+    openai_max_tokens: int = Field(default=4096, ge=1)
+    # Explicit per-model effort overrides; otherwise read gateway /models metadata.
+    openai_model_efforts: dict[str, str] = Field(default_factory=dict)
+
     # Identity and storage
     server_name: str = "FullSkat"
     data_dir: Path = Path("./data")
@@ -87,7 +98,7 @@ class Settings(BaseSettings):
     trust_proxy_headers: bool = False
     log_level: str = "INFO"
 
-    @field_validator("openrouter_reasoning_effort", "anthropic_effort", mode="before")
+    @field_validator("openrouter_reasoning_effort", "anthropic_effort", "openai_reasoning_effort", mode="before")
     @classmethod
     def _blank_effort_means_none(cls, value: object) -> str:
         return "" if value is None else str(value).strip()
@@ -95,11 +106,17 @@ class Settings(BaseSettings):
     @property
     def configured_providers(self) -> list[str]:
         """Providers that have an API key, in priority order. Whether they actually work is probed at runtime."""
-        keys = {"anthropic": self.anthropic_api_key, "openrouter": self.openrouter_api_key, "kimi": self.kimi_api_key}
+        keys = {
+            "anthropic": self.anthropic_api_key, "openrouter": self.openrouter_api_key,
+            "kimi": self.kimi_api_key, "openai": self.openai_api_key,
+        }
         return [name for name in PROVIDERS if keys[name].strip()]
 
     def provider_default_model(self, provider: str) -> str:
-        return {"anthropic": self.anthropic_model, "openrouter": self.openrouter_model, "kimi": self.kimi_model}[provider]
+        return {
+            "anthropic": self.anthropic_model, "openrouter": self.openrouter_model,
+            "kimi": self.kimi_model, "openai": self.openai_model,
+        }[provider]
 
     def provider_models(self, provider: str) -> list[str]:
         """Allowlist of one provider; its default model is always allowed and listed first if missing."""
@@ -107,6 +124,7 @@ class Settings(BaseSettings):
             "anthropic": self.anthropic_allowed_models,
             "openrouter": self.openrouter_allowed_models,
             "kimi": self.kimi_allowed_models,
+            "openai": self.openai_allowed_models,
         }[provider]
         models = _split(raw)
         default = self.provider_default_model(provider)

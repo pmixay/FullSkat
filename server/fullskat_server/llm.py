@@ -1,4 +1,4 @@
-"""Streaming chat through the Claude API, OpenRouter and Kimi; several can be enabled at once."""
+"""Streaming chat through Claude, OpenRouter, Kimi and OpenAI Responses gateways."""
 
 from __future__ import annotations
 
@@ -445,6 +445,153 @@ class OpenRouterLLM(_ChatCompletionsLLM):
         return ModelEfforts(supported, pick_default(supported, self._settings.openrouter_reasoning_effort))
 
 
+class OpenAILLM(_ChatCompletionsLLM):
+    """OpenAI Responses streams, including Codex LB's /v1 compatibility endpoint."""
+
+    label = "OpenAI"
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
+        super().__init__(settings, client)
+        self._models: dict[str, dict[str, Any]] = {}
+
+    def _api_key(self) -> str:
+        return self._settings.openai_api_key
+
+    def _url(self) -> str:
+        return f"{self._settings.openai_base_url.rstrip('/')}/responses"
+
+    def _probe_url(self) -> str:
+        return f"{self._settings.openai_base_url.rstrip('/')}/models"
+
+    async def probe(self) -> None:
+        try:
+            response = await self._client.get(self._probe_url(), headers=self._headers(), timeout=PROBE_TIMEOUT)
+            if response.status_code >= 400:
+                message = extract_upstream_message(response.content)
+                raise LLMError(error_code_for_status(response.status_code, message), message)
+            entries = response.json()["data"]
+            if not isinstance(entries, list):
+                raise ValueError("invalid model list")
+            self._models = {entry["id"]: entry.get("metadata") or {} for entry in entries}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            raise LLMError("upstream_error", "could not read the OpenAI model catalog") from exc
+
+    async def efforts(self, model: str) -> ModelEfforts:
+        override = self._settings.openai_model_efforts.get(model)
+        metadata = self._models.get(model, {})
+        supported = normalize_efforts(
+            override.split(",") if override is not None else
+            [level.get("effort") for level in metadata.get("supported_reasoning_levels", [])]
+        )
+        return ModelEfforts(supported, pick_default(
+            supported, self._settings.openai_reasoning_effort, metadata.get("default_reasoning_level")
+        ))
+
+    async def usage(self) -> UsageLeft | None:
+        # Codex LB exposes quota for this key without granting dashboard access.
+        try:
+            response = await self._client.get(
+                f"{self._settings.openai_base_url.rstrip('/')}/usage", headers=self._headers(), timeout=PROBE_TIMEOUT
+            )
+            if response.status_code != 200:
+                return None
+            data = response.json()
+            limits = data.get("limits") or []
+            shares = [float(limit["remaining_value"]) / float(limit["max_value"])
+                      for limit in limits if not limit.get("model_filter") and float(limit.get("max_value") or 0) > 0]
+            if shares:
+                left = min(shares)
+                return UsageLeft(left, f"{100 * left:.0f}%")
+        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            pass
+        return None
+
+    def _body(
+        self, messages: list[dict[str, Any]], model: str, effort: str | None = None, web_search: bool | None = None
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": model,
+            "instructions": "\n\n".join(m["content"] for m in messages if m["role"] == "system"),
+            "input": [m for m in messages if m["role"] != "system"],
+            "stream": True,
+            "store": False,
+            "max_output_tokens": self._settings.openai_max_tokens,
+        }
+        reasoning: dict[str, str] = {}
+        if effort:
+            reasoning["effort"] = effort
+        if self._settings.show_thinking:
+            reasoning["summary"] = "auto"
+        if reasoning:
+            body["reasoning"] = reasoning
+        if _web_search_enabled(self._settings, web_search):
+            body["tools"] = [{"type": "web_search"}]
+        return body
+
+    async def stream(
+        self, messages: list[dict[str, str]], model: str, *,
+        effort: str | None = None, web_search: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Usage]:
+        if not self._api_key().strip():
+            raise LLMError("upstream_auth", "OPENAI_API_KEY is not configured on the server")
+        try:
+            async with self._client.stream(
+                "POST", self._url(), headers=self._headers(), json=self._body(messages, model, effort, web_search)
+            ) as response:
+                if response.status_code >= 400:
+                    message = extract_upstream_message(await response.aread())
+                    raise LLMError(error_code_for_status(response.status_code, message), message,
+                                   parse_retry_after(response.headers.get("retry-after")))
+                async for event in _response_events(response):
+                    kind = event.get("type")
+                    if kind in ("response.output_text.delta", "response.refusal.delta"):
+                        if event.get("delta"):
+                            yield str(event["delta"])
+                    elif kind == "response.reasoning_summary_text.delta":
+                        if self._settings.show_thinking and event.get("delta"):
+                            yield Thinking(str(event["delta"]))
+                    elif kind == "response.completed":
+                        usage = (event.get("response") or {}).get("usage") or {}
+                        yield Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
+                        return
+                    elif kind in ("error", "response.failed", "response.incomplete"):
+                        result = event.get("response") or event
+                        error = result.get("error") or result.get("incomplete_details") or result
+                        message = str(error.get("message") or error.get("reason") or "OpenAI response failed")
+                        code = str(error.get("code") or "")
+                        status = {"invalid_api_key": 401, "authentication_error": 401,
+                                  "rate_limit_exceeded": 429, "usage_limit_reached": 429,
+                                  "insufficient_quota": 402}.get(code, 500)
+                        raise LLMError(error_code_for_status(status, f"{code} {message}"), message,
+                                       parse_retry_after(str(error.get("retry_after_seconds") or "")))
+        except httpx.HTTPError as exc:
+            raise LLMError("upstream_error", "could not reach the OpenAI gateway") from exc
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise LLMError("upstream_error", "invalid OpenAI response stream") from exc
+        # Never report a truncated stream as a successful watch answer.
+        raise LLMError("upstream_error", "OpenAI stream ended before response.completed")
+
+
+async def _response_events(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
+    """Read SSE data frames, including multiline JSON and a final frame without a blank line."""
+    data: list[str] = []
+    async for line in response.aiter_lines():
+        if line.startswith("data:"):
+            data.append(line[5:].lstrip(" "))
+        elif not line and data:
+            payload = "\n".join(data)
+            data.clear()
+            if payload == "[DONE]":
+                return
+            event = json.loads(payload)
+            if isinstance(event, dict):
+                yield event
+    if data and "\n".join(data) != "[DONE]":
+        event = json.loads("\n".join(data))
+        if isinstance(event, dict):
+            yield event
+
+
 class KimiLLM(_ChatCompletionsLLM):
     """Streams from the Kimi Code platform (OpenAI-compatible) and runs the builtin `$web_search` tool when it is offered."""
 
@@ -738,7 +885,7 @@ class AnthropicLLM:
         yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
-Provider = AnthropicLLM | OpenRouterLLM | KimiLLM
+Provider = AnthropicLLM | OpenRouterLLM | KimiLLM | OpenAILLM
 
 
 @dataclass(frozen=True)
@@ -895,6 +1042,8 @@ def create_llm(settings: Settings, client: httpx.AsyncClient) -> MultiLLM:
             providers[name] = AnthropicLLM(settings)
         elif name == "openrouter":
             providers[name] = OpenRouterLLM(settings, client)
-        else:
+        elif name == "kimi":
             providers[name] = KimiLLM(settings, client)
+        elif name == "openai":
+            providers[name] = OpenAILLM(settings, client)
     return MultiLLM(settings, providers)

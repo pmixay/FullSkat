@@ -128,7 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.info(
             "FullSkat server ready: providers=%s web_search=%s data_dir=%s",
-            ",".join(settings.configured_providers) or "none (set ANTHROPIC_API_KEY, OPENROUTER_API_KEY or KIMI_API_KEY)",
+            ",".join(settings.configured_providers) or "none (set ANTHROPIC_API_KEY, OPENROUTER_API_KEY, KIMI_API_KEY or OPENAI_API_KEY)",
             settings.web_search,
             settings.data_dir,
         )

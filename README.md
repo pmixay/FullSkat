@@ -10,7 +10,7 @@ dialogs stay there too. A small server you host holds the API keys and relays th
   `targetSdk 37`, `minSdk 33`.
 * **Server** (`server/`): Python, FastAPI. Pairing passcode, per-token rate limits,
   chat relay to the Claude API (default model `claude-haiku-5-5`, with web search), OpenRouter
-  and Kimi, any of them at once. See [`server/README.md`](server/README.md).
+  Kimi and OpenAI/Codex LB, any of them at once. See [`server/README.md`](server/README.md).
 * **Protocol** ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): pairing and SSE chat.
 
 ## What the watch app does
@@ -25,7 +25,7 @@ dialogs stay there too. A small server you host holds the API keys and relays th
 | Tile | Swipe-left tile with a big amber mic and today's dialog count. |
 | Complication | Round watch-face widget showing only a mic icon (monochromatic or small image) that starts a new dialog. |
 | Pairing | The app is fixed to `https://skat.arbuz.lol` (there is no address field). Enter a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
-| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1. The list comes from the server and is grouped by provider (collapsed by default, each with a ring showing its budget left); it shows only providers that currently work (Claude API, OpenRouter, Kimi Code). |
+| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1, and configured OpenRouter, Kimi Code and OpenAI gateway models (GPT-6.1 Terra, GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra). The list comes from the server and is grouped by provider (collapsed by default, each with a ring showing its budget left); it shows providers whose probes pass. Server-side additions need no watch reinstall. |
 | Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). |
 | Languages | Speech recognition is Russian-only. The assistant answers in the language the text is in. UI is localized in English and Russian. |
 

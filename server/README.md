@@ -2,7 +2,8 @@
 
 The server half of FullSkat, a Wear OS voice assistant. The watch recognizes speech
 on-device, so the server never receives audio; it holds the API keys and relays chat
-completions to the Claude API, OpenRouter and the Kimi Code platform (any of them, at the same time). It stores no dialogs, only a passcode hash and the tokens it has issued.
+completions to the Claude API, OpenRouter, the Kimi Code platform and OpenAI Responses gateways such as
+Codex LB (any of them, at the same time). It stores no dialogs, only a passcode hash and the tokens it has issued.
 The wire contract is in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md).
 
 ## Quick start with Docker
@@ -82,7 +83,7 @@ passed one is trusted for 5 min, and a rejected key during a chat disables the p
 key is revoked or a provider goes down its models disappear from the watch's picker by themselves, and
 come back when it works again. `/v1/me` reports the diagnosis (`providers`).
 
-Priority is Claude, then OpenRouter, then Kimi: the default model is the default model of the first
+Priority is Claude, then OpenRouter, then Kimi, then OpenAI: the default model is the default model of the first
 working provider. Models are routed to the provider that lists them.
 
 * **Claude API**: `ANTHROPIC_MODEL` (default `claude-haiku-5-5`) and `ANTHROPIC_ALLOWED_MODELS`
@@ -103,6 +104,18 @@ working provider. Models are routed to the provider that lists them.
   again, at most `WEB_SEARCH_MAX_USES` times per answer. Kimi Code does not document that tool, so if the
   endpoint rejects it the server drops it, logs a warning and answers without web search from then on.
   The usage ring reads `GET <base>/usages`, which is not in the public docs; if it fails there is no ring.
+
+* **OpenAI / Codex LB** (`OPENAI_*`): uses the Responses API at `OPENAI_BASE_URL` (direct OpenAI
+  `https://api.openai.com/v1`, local Codex LB `http://127.0.0.1:2455/v1`). Set `OPENAI_API_KEY` to a
+  dedicated gateway key. The default allowlist contains `gpt-6.1-terra`, `gpt-6-luna`, `gpt-6.1-sol`
+  and `gpt-6-astra`. An authenticated `/models` probe controls availability; Codex LB's model metadata
+  supplies supported reasoning levels, or set `OPENAI_MODEL_EFFORTS` for a gateway without metadata.
+  Responses text, refusal text, reasoning summaries and token usage are translated to the existing
+  watch SSE events. Failed, incomplete or disconnected responses produce an error, never a successful
+  truncated answer. `WEB_SEARCH` controls the built-in `web_search` tool; this backend does not accept
+  `max_tool_calls`, so `WEB_SEARCH_MAX_USES` does not cap OpenAI searches. `SHOW_THINKING=false` omits
+  summaries and suppresses them even if a gateway sends one. The usage ring uses the tightest
+  unfiltered quota in Codex LB's `/v1/usage`; gateways without it have no ring.
 
 The server tells the watch the models of the working providers, grouped by provider (`providers`),
 and the efforts each model supports (`model_efforts`).
@@ -181,3 +194,10 @@ responses.
 ## Environment variables
 
 See [`.env.example`](.env.example) for the full list with defaults and comments.
+
+## Local Codex LB deployment
+
+See [the deployment notes](../docs/CODEX_GATEWAY.md) for service locations, verification and restart commands.
+The installed watch already loads providers, models and efforts from `/v1/me` when the app or its Model
+settings opens. Adding this provider needs only a server restart: keep `DATA_DIR/state.json` and the
+watch's token intact. No watch reinstall or re-pairing is needed.
