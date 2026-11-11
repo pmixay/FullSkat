@@ -72,6 +72,7 @@ import com.fullskat.watch.data.db.Role
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
+import com.fullskat.watch.ui.components.UsageLimitCard
 import com.fullskat.watch.ui.components.errorText
 import com.fullskat.watch.ui.rich.RichText
 import com.fullskat.watch.ui.theme.Tokens
@@ -108,8 +109,10 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
     }
     // Errors clear themselves after a few seconds.
     LaunchedEffect(turn) {
-        if (turn is TurnState.Failed) {
-            delay(4_000)
+        val failure = turn as? TurnState.Failed
+        if (failure != null) {
+            // A usage-limit card carries more to read (and a wait time), so it stays longer than a chip.
+            delay(if (failure.kind.isUsageLimit) 10_000 else 4_000)
             vm.dismissError()
         }
     }
@@ -209,7 +212,11 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
         val failed = turn as? TurnState.Failed
         if (failed != null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                ErrorChip(errorText(failed.kind), Modifier.padding(bottom = 36.dp).clickable { vm.dismissError() })
+                if (failed.kind.isUsageLimit) {
+                    UsageLimitCard(failed.kind, failed.retryAfterSec, Modifier.padding(bottom = 30.dp).clickable { vm.dismissError() })
+                } else {
+                    ErrorChip(errorText(failed.kind), Modifier.padding(bottom = 36.dp).clickable { vm.dismissError() })
+                }
             }
         }
         val listening = turn as? TurnState.Listening

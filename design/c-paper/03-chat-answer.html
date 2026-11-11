@@ -1,0 +1,60 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=216,initial-scale=1"><title>Paper chat</title><style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:216px;height:216px;overflow:hidden;background:#000}
+body{font-family:Roboto,"Google Sans",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.scr{position:relative;width:216px;height:216px;overflow:hidden}
+.ab{position:absolute}
+.ic{display:block;flex:none}
+.row{display:flex;align-items:center}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+.scr{color:#F2E9DD}
+.serif{font-family:"Noto Serif","Bitstream Charter",Georgia,serif}
+.time{position:absolute;top:10px;left:0;right:0;text-align:center;font-size:12px;color:#BFB2A1;font-family:"Noto Serif","Bitstream Charter",Georgia,serif}
+.disc{border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+.list{position:absolute;left:0;right:0;display:flex;flex-direction:column;gap:6px}
+.card{border-radius:26px;background:#1E1914;width:100%}
+.r{height:50px;display:flex;align-items:center;gap:10px;padding:0 14px 0 9px;width:100%}
+.t1{font-size:14px;line-height:18px;font-family:"Noto Serif","Bitstream Charter",Georgia,serif}
+.t2{font-size:11px;color:#BFB2A1;line-height:14px}
+.ubub{font-size:14px;line-height:19px;padding:7px 12px;border-radius:19px 19px 6px 19px;background:#3A2A1F;color:#F8DCC6;width:max-content}
+.ans{font-size:14px;line-height:20px;color:#F2E9DD}
+.li{display:flex;gap:8px;align-items:baseline;margin-top:2px}
+.bul{flex:none;width:6px;height:6px;border-radius:50%;background:#A9CBA2;transform:translateY(-2px)}
+code{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:#EAD28C;background:#2F2918;border-radius:7px;padding:0 5px}
+.sw{width:32px;height:20px;border-radius:10px;position:relative;flex:none}
+.sw i{position:absolute;top:3px;width:14px;height:14px;border-radius:50%}
+</style></head><body style="background:#0B0907"><div class="scr">
+<div class="list" style="top:16px;gap:5px">
+  <div class="ubub" data-fit="6" data-r="14" data-al="e" data-min="60">Как сварить гречку?</div>
+  <div class="row" data-fit="8" data-r="13" data-min="60" style="gap:6px;height:26px;padding:0 10px 0 7px;border-radius:13px;background:#BCB3EA1E;width:max-content;font-size:11.5px;color:#D9D3F5"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" ><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" fill="#BCB3EA" fill-opacity=".30" stroke="none"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" fill="none" stroke="#BCB3EA" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.5 19h5" fill="none" stroke="#BCB3EA" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 21.5h3" fill="none" stroke="#BCB3EA" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ell">Промыть, вода 1:2…</span><svg class="ic" width="13" height="13" viewBox="0 0 24 24" ><path d="M6.5 9.5l5.5 5.5 5.5-5.5" fill="none" stroke="#BCB3EA" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="ans" style="padding:0 24px 0 32px">
+    <div class="li"><span class="bul"></span><span>Промойте крупу</span></div>
+    <div class="li"><span class="bul" style="background:#EAD28C"></span><span>Вода 1:2, <code>соль</code></span></div>
+    <div class="li"><span class="bul" style="background:#F4B48C"></span><span>15 мин под крышкой</span></div>
+  </div>
+</div>
+<div class="ab disc" style="left:86px;top:174px;width:44px;height:44px;background:#F4B48C"><svg class="ic" width="21" height="21" viewBox="0 0 24 24" ><path d="M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z" fill="#2A1608" fill-opacity=".30" stroke="none"/><path d="M9 5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z" fill="none" stroke="#2A1608" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0" fill="none" stroke="#2A1608" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 17.5V21" fill="none" stroke="#2A1608" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M8.5 21h7" fill="none" stroke="#2A1608" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+</div><script>
+(function(){
+  var C=108;
+  function chord(top,bot,m,r){
+    var yf=Math.max(Math.abs(top-C),Math.abs(bot-C));
+    var ins=0.3*r; yf=Math.max(0,yf-ins);
+    var R=C-m; if(yf>=R) return 0; return 2*Math.sqrt(R*R-yf*yf)+2*ins;
+  }
+  document.querySelectorAll('[data-fit]').forEach(function(el){
+    var m=+el.dataset.fit||0, r=+(el.dataset.r||0), al=el.dataset.al||'c', minW=+(el.dataset.min||120), s=1;
+    for(var k=0;k<3;k++){
+      el.style.maxWidth='';
+      var b=el.getBoundingClientRect(), w=chord(b.top,b.bottom,m,r);
+      if(w<minW){s=Math.max(.5,w/Math.min(b.width,176)); w=Math.min(b.width,176);} else s=1;
+      el.style.maxWidth=Math.floor(w)+'px';
+    }
+    var b=el.getBoundingClientRect(), w=Math.max(minW,chord(b.top,b.bottom,m,r)), x;
+    if(al==='e') x=C+w/2-b.width; else if(al==='s') x=C-w/2; else x=C-b.width/2;
+    if(s<1){x=C-b.width/2; el.style.opacity=(0.25+0.75*s).toFixed(2);}
+    el.style.transform='translateX('+(x-b.left)+'px)'+(s<1?' scale('+s.toFixed(3)+')':'');
+  });
+})();
+</script></body></html>

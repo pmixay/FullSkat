@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
-
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_ALLOWED_MODELS = (
-    "openai/gpt-5.6-luna,openai/gpt-5.6-luna-pro,openai/gpt-5.5,"
-    "google/gemini-3.5-flash,anthropic/claude-sonnet-5"
-)
+DEFAULT_ALLOWED_MODELS = "openai/gpt-6.1-terra,openai/gpt-6-luna"
+# Kimi Code model ids (https://www.kimi.com/code/docs/en/). "kimi-for-coding" is what the docs call K2.8 Preview.
+DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,kimi-for-coding"
+# Efforts per model: both take low/high/max. K3.1 Pro always thinks (max by default; thinking off is rejected),
+# so "none" is not offered, and the docs do not list its levels, only its sibling K3's (low/high/max) and
+# OpenRouter's catalog (max/high/low/none) agree on the rest.
+DEFAULT_KIMI_MODEL_EFFORTS = {"k3.1-pro": "low,high,max", "kimi-for-coding": "low,high,max"}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
+DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.1-sol,gpt-6-astra"
+
+
+PROVIDERS = ("anthropic", "openrouter", "kimi", "openai")
 
 
 class Settings(BaseSettings):
@@ -20,8 +25,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Chat provider: "anthropic" (default, Claude API) or "openrouter"
-    llm_provider: Literal["anthropic", "openrouter"] = "anthropic"
+    # Chat providers are not pinned: every provider with an API key set is probed (see llm.MultiLLM) and
+    # its models are offered to the watch for as long as the probe succeeds. Priority: anthropic, openrouter, kimi, openai.
     # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
     web_search: bool = True
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
@@ -37,12 +42,42 @@ class Settings(BaseSettings):
     # Upper bound for one answer including adaptive thinking tokens.
     anthropic_max_tokens: int = Field(default=4096, ge=1)
 
-    # OpenRouter (chat, used when LLM_PROVIDER=openrouter)
+    # OpenRouter (chat)
     openrouter_api_key: str = ""
-    openrouter_model: str = "openai/gpt-5.6-luna"
+    openrouter_model: str = "openai/gpt-6.1-terra"
     openrouter_reasoning_effort: str = "high"
     openrouter_allowed_models: str = DEFAULT_ALLOWED_MODELS
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Upper bound for one answer including reasoning tokens (a small cap lets reasoning eat the whole answer).
+    openrouter_max_tokens: int = Field(default=4096, ge=1)
+
+    # Kimi Code platform (chat, OpenAI-compatible API of the Kimi Code membership, with an API key from the
+    # Kimi Code console). Overseas: https://api.kimi.ai/coding/v1, mainland China: https://api.kimi.com/coding/v1
+    kimi_api_key: str = ""
+    kimi_model: str = "k3.1-pro"
+    kimi_allowed_models: str = DEFAULT_KIMI_ALLOWED_MODELS
+    kimi_base_url: str = "https://api.kimi.ai/coding/v1"
+    # Upper bound for one answer including thinking (K3.1 Pro always thinks, at max effort by default).
+    kimi_max_tokens: int = Field(default=8192, ge=1)
+    # Effort levels per Kimi model, since they differ and the API has no endpoint that lists them. In order:
+    # KIMI_MODEL_EFFORTS (JSON, per model; "" = not adjustable; the default follows Kimi Code's docs),
+    # OpenRouter's public model list (moonshotai/<model>, only with KIMI_EFFORTS_FROM_CATALOG=true; its model
+    # ids and rules are those of the Moonshot API, not Kimi Code) and KIMI_EFFORTS (comma-separated, e.g.
+    # "low,high"), the list for every model without its own; empty = not adjustable.
+    kimi_model_efforts: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_KIMI_MODEL_EFFORTS))
+    kimi_efforts_from_catalog: bool = False
+    kimi_efforts: str = ""
+    kimi_default_effort: str = ""
+
+    # OpenAI Responses API, directly or through a gateway such as Codex LB.
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-6.1-terra"
+    openai_allowed_models: str = DEFAULT_OPENAI_ALLOWED_MODELS
+    openai_reasoning_effort: str = "medium"
+    openai_max_tokens: int = Field(default=4096, ge=1)
+    # Explicit per-model effort overrides; otherwise read gateway /models metadata.
+    openai_model_efforts: dict[str, str] = Field(default_factory=dict)
 
     # Identity and storage
     server_name: str = "FullSkat"
@@ -58,35 +93,60 @@ class Settings(BaseSettings):
     # Chat shaping
     max_history_messages: int = Field(default=24, ge=1)
     max_history_chars: int = Field(default=12000, ge=1)
-    max_completion_tokens: int = Field(default=700, ge=1)
 
     # Networking / misc
     trust_proxy_headers: bool = False
     log_level: str = "INFO"
 
-    @field_validator("openrouter_reasoning_effort", "anthropic_effort", mode="before")
+    @field_validator("openrouter_reasoning_effort", "anthropic_effort", "openai_reasoning_effort", mode="before")
     @classmethod
     def _blank_effort_means_none(cls, value: object) -> str:
         return "" if value is None else str(value).strip()
 
     @property
-    def chat_model(self) -> str:
-        """Default chat model of the active provider."""
-        return self.anthropic_model if self.llm_provider == "anthropic" else self.openrouter_model
+    def configured_providers(self) -> list[str]:
+        """Providers that have an API key, in priority order. Whether they actually work is probed at runtime."""
+        keys = {
+            "anthropic": self.anthropic_api_key, "openrouter": self.openrouter_api_key,
+            "kimi": self.kimi_api_key, "openai": self.openai_api_key,
+        }
+        return [name for name in PROVIDERS if keys[name].strip()]
 
-    @property
-    def allowed_models(self) -> list[str]:
-        """Allowlist of the active provider as a list; the default model is always allowed."""
-        raw = self.anthropic_allowed_models if self.llm_provider == "anthropic" else self.openrouter_allowed_models
-        models = [m.strip() for m in raw.split(",") if m.strip()]
-        if self.chat_model not in models:
-            models.insert(0, self.chat_model)
+    def provider_default_model(self, provider: str) -> str:
+        return {
+            "anthropic": self.anthropic_model, "openrouter": self.openrouter_model,
+            "kimi": self.kimi_model, "openai": self.openai_model,
+        }[provider]
+
+    def provider_models(self, provider: str) -> list[str]:
+        """Allowlist of one provider; its default model is always allowed and listed first if missing."""
+        raw = {
+            "anthropic": self.anthropic_allowed_models,
+            "openrouter": self.openrouter_allowed_models,
+            "kimi": self.kimi_allowed_models,
+            "openai": self.openai_allowed_models,
+        }[provider]
+        models = _split(raw)
+        default = self.provider_default_model(provider)
+        if default not in models:
+            models.insert(0, default)
         return models
+
+    def provider_for(self, model: str) -> str | None:
+        """The provider that serves `model` (the first one, in priority order, whose list has it), or None."""
+        for provider in PROVIDERS:
+            if model in self.provider_models(provider):
+                return provider
+        return None
 
     @property
     def reasoning_effort(self) -> str | None:
         """Reasoning effort to send upstream, or None to omit the `reasoning` field entirely."""
         return self.openrouter_reasoning_effort or None
+
+
+def _split(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def load_settings() -> Settings:

@@ -1,19 +1,27 @@
 # FullSkat client–server protocol
 
 The watch app (client) talks to a small server that holds the provider keys
-(Claude API or OpenRouter) and forwards chat requests. The server stores nothing about
+(Claude API, OpenRouter and/or Kimi Code) and forwards chat requests. The server stores nothing about
 dialogs; dialogs live on the watch. Speech recognition runs on the watch; no audio is
 ever sent to the server.
 
 Base URL: the app is built for a single fixed server, `https://skat.arbuz.lol`; the user
 cannot change it. (Self-hosting means changing `ServerEndpoint.URL` in the app.)
 
-All endpoints except `POST /v1/pair` and `effort` (in the pairing responses and `/v1/me`) is the server's default reasoning effort for
-the active provider (`ANTHROPIC_EFFORT` or `OPENROUTER_REASONING_EFFORT`; empty string if none).
-`web_search` is the server's `WEB_SEARCH` master switch.
+All endpoints except `POST /v1/pair` and `GET /healthz` require `Authorization: Bearer <token>`.
 
-`GET /healthz` require
-`Authorization: Bearer <token>`.
+The pairing responses and `GET /v1/me` describe the models on offer:
+
+* `model` default model, `models` all models of the working providers (flat, for old clients).
+* `effort` default effort of the default model (empty string if it has none).
+* `model_efforts`: `{"<model>": {"efforts": ["low", "high"], "default": "high"}}`. `efforts` are the
+  levels the model accepts, lowest first, from `none`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+  `max`; an empty list means effort is not adjustable.
+* `providers`: `{"<id>": {"ok": true, "reason": "", "models": ["..."], "usage": {"remaining": 0.4,
+  "label": "$4.20"}|null}}` for every configured provider (`anthropic`, `openrouter`, `kimi`), in
+  priority order. `ok` is the server's own diagnosis; only working providers list models. `usage.remaining`
+  is the share of budget left (0..1, may be null) and `label` a display amount.
+* `web_search` is the server's `WEB_SEARCH` master switch.
 
 Errors are JSON: `{"error": "<code>", "message": "<human text>"}` with an HTTP
 status. Rate-limit rejections use status `429` and a `Retry-After` header
@@ -66,14 +74,13 @@ token was revoked (state file reset).
 }
 ```
 
-* `model` is optional; default comes from server config (`LLM_PROVIDER`:
-  `anthropic` by default with `ANTHROPIC_MODEL=claude-haiku-5-5`, or `openrouter`
-  with `OPENROUTER_MODEL`). `model` and `models` in the pairing / `/v1/me` responses
-  are the default and the allowlist of the active provider; only allowlisted models
-  are accepted (`400 model_not_allowed`).
-* `effort` is optional: `"low"`, `"medium"`, `"high"`, `"xhigh"` or `"max"`; absent or
-  `null` uses the server default (see `/v1/me`). Any other value is `400 invalid_request`.
-  (OpenRouter has no `max` level; the server sends `xhigh` there.)
+* `model` is optional; the default is the default model of the first working provider.
+  Only models of working providers are accepted: `400 model_not_allowed` for an unknown model,
+  `503 provider_unavailable` when its provider is down, `503 no_provider` when none works.
+* `effort` is optional: `none`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`; absent or
+  `null` uses the model's default (see `model_efforts`). Any other value is `400 invalid_request`.
+  A level the model does not accept is replaced by the nearest supported one, and ignored for a model
+  whose effort is not adjustable.
 * `web_search` is optional boolean; absent or `null` uses the server default. `false`
   disables web search for this request. `true` only enables it if the server setting
   `WEB_SEARCH` is on: that setting is a master switch, so the client can turn search off but
@@ -92,5 +99,9 @@ token was revoked (state file reset).
   * `event: done`   `data: {"text": "<full answer>", "model": "...",
     "usage": {"prompt_tokens": n, "completion_tokens": n},
     "thinking": "<full thinking text, empty string if none>"}`
-  * `event: error`  `data: {"error": "<code>", "message": "..."}`
-* Limits per token: 20/min, 500/day (`429`). Request body max 64 KiB.
+  * `event: error`  `data: {"error": "<code>", "message": "...", "retry_after": 90}` (`retry_after`
+    seconds, only when known). Codes: `upstream_rate_limited` (provider pause), `upstream_quota`
+    (provider credits spent), `upstream_auth` (provider rejected the server's key), `upstream_error`,
+    `internal_error`.
+* Limits per token: 20/min (`429 rate_limited`), 500/day (`429 daily_limit`), both with
+  `Retry-After`. Request body max 64 KiB.

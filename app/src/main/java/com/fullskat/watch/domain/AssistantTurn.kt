@@ -35,7 +35,28 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import java.util.UUID
 
-enum class ErrorKind { NO_CONNECTION, UNAUTHORIZED, RATE_LIMITED, SERVER, NOTHING_HEARD, MIC, SPEECH }
+enum class ErrorKind {
+    NO_CONNECTION,
+    UNAUTHORIZED,
+
+    /** Usage limits, shown as their own block: a short pause, the server's daily cap, spent provider credits. */
+    RATE_LIMITED,
+    DAILY_LIMIT,
+    QUOTA,
+    PROVIDER_BUSY,
+
+    /** The model provider rejected the server's key, or none works right now, or the chosen model is gone. */
+    PROVIDER_AUTH,
+    NO_PROVIDER,
+    MODEL_UNAVAILABLE,
+    SERVER,
+    NOTHING_HEARD,
+    MIC,
+    SPEECH,
+    ;
+
+    val isUsageLimit: Boolean get() = this == RATE_LIMITED || this == DAILY_LIMIT || this == QUOTA || this == PROVIDER_BUSY
+}
 
 sealed interface TurnState {
     data object Idle : TurnState
@@ -43,7 +64,7 @@ sealed interface TurnState {
     data object Transcribing : TurnState
     data object Thinking : TurnState
     data class Answering(val text: String, val thinking: String = "") : TurnState
-    data class Failed(val kind: ErrorKind, val detail: String?) : TurnState
+    data class Failed(val kind: ErrorKind, val detail: String?, val retryAfterSec: Int = 0) : TurnState
 
     val busy: Boolean get() = this !is Idle && this !is Failed
 }
@@ -127,7 +148,7 @@ class AssistantTurn(
             dao.touchDialog(dialogId, now)
         }
         _state.value = TurnState.Thinking
-        answer(dialogId, cfg.serverUrl, token, cfg.model, cfg.effort, cfg.webSearch)
+        answer(dialogId, cfg.serverUrl, token, cfg.model, cfg.effectiveEffort, cfg.webSearch)
         FullSkatTileService.requestUpdate(context)
     }
 
@@ -203,7 +224,7 @@ class AssistantTurn(
                         dao.touchDialog(dialogId, System.currentTimeMillis())
                         _state.value = TurnState.Idle
                     }
-                    is ChatEvent.Error -> throw ApiException.Server(502, ev.message.ifBlank { ev.code })
+                    is ChatEvent.Error -> throw ApiException.Server(502, ev.message.ifBlank { ev.code }, ev.code, ev.retryAfterSec)
                 }
             }
             if (_state.value is TurnState.Answering) {
@@ -213,7 +234,12 @@ class AssistantTurn(
             }
         } catch (e: ApiException) {
             finalizePartial(msgId, sb, tb)
-            _state.value = TurnState.Failed(e.kind(), e.message)
+            val kind = e.kind()
+            _state.value = TurnState.Failed(kind, e.message, e.retryAfterSec())
+            // The provider list changes while the server runs; relearn it so the next try uses a working model.
+            if (kind == ErrorKind.MODEL_UNAVAILABLE || kind == ErrorKind.NO_PROVIDER || kind == ErrorKind.PROVIDER_AUTH) {
+                refreshServerModels(serverUrl, token)
+            }
         } catch (e: CancellationException) {
             // User tapped Stop: keep whatever streamed so far as the answer.
             withContext(NonCancellable) { finalizePartial(msgId, sb, tb) }
@@ -233,11 +259,37 @@ class AssistantTurn(
         }
     }
 
+    private suspend fun refreshServerModels(serverUrl: String, token: String) {
+        try {
+            val me = api.me(serverUrl, token)
+            settings.saveServerModels(me.model, me.models, me.effort, me.modelEfforts, me.providers)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            // Offline or revoked: the cached list stays and the next turn reports the real problem.
+        }
+    }
+
     private fun ApiException.kind(): ErrorKind = when (this) {
         is ApiException.Network -> ErrorKind.NO_CONNECTION
         is ApiException.Unauthorized, is ApiException.WrongPasscode -> ErrorKind.UNAUTHORIZED
-        is ApiException.RateLimited, is ApiException.Locked -> ErrorKind.RATE_LIMITED
-        is ApiException.Server -> ErrorKind.SERVER
+        is ApiException.Locked -> ErrorKind.RATE_LIMITED
+        is ApiException.RateLimited -> if (code == "daily_limit") ErrorKind.DAILY_LIMIT else ErrorKind.RATE_LIMITED
+        is ApiException.Server -> when (code) {
+            "upstream_quota" -> ErrorKind.QUOTA
+            "upstream_rate_limited" -> ErrorKind.PROVIDER_BUSY
+            "upstream_auth" -> ErrorKind.PROVIDER_AUTH
+            "no_provider", "provider_unavailable" -> ErrorKind.NO_PROVIDER
+            "model_not_allowed" -> ErrorKind.MODEL_UNAVAILABLE
+            "invalid_token", "missing_token" -> ErrorKind.UNAUTHORIZED
+            else -> ErrorKind.SERVER
+        }
+    }
+
+    private fun ApiException.retryAfterSec(): Int = when (this) {
+        is ApiException.RateLimited -> retryAfterSec
+        is ApiException.Locked -> retryAfterSec
+        is ApiException.Server -> retryAfterSec
+        else -> 0
     }
 
     private class SpeechEngineException(message: String) : Exception(message)

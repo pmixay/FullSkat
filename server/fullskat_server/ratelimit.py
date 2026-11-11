@@ -17,7 +17,7 @@ DAY = 86_400.0
 class Decision:
     allowed: bool
     retry_after: int = 0  # seconds, meaningful when not allowed
-    reason: str = ""  # "rate_limited" | "locked" | ""
+    reason: str = ""  # "rate_limited" | "daily_limit" | "locked" | ""
 
 
 class SlidingWindowLimiter:
@@ -49,16 +49,19 @@ class SlidingWindowLimiter:
         with self._lock:
             hits = self._hits.setdefault((scope, key), deque())
             self._prune(hits, now)
-            retry = 0.0
+            day_retry = minute_retry = 0.0
             if self.per_day is not None and len(hits) >= self.per_day:
-                retry = max(retry, hits[len(hits) - self.per_day] + DAY - now)
+                day_retry = hits[len(hits) - self.per_day] + DAY - now
             if self.per_minute is not None:
                 minute_horizon = now - MINUTE
                 recent = [t for t in hits if t > minute_horizon]
                 if len(recent) >= self.per_minute:
-                    retry = max(retry, recent[len(recent) - self.per_minute] + MINUTE - now)
+                    minute_retry = recent[len(recent) - self.per_minute] + MINUTE - now
+            retry = max(day_retry, minute_retry)
             if retry > 0:
-                return Decision(allowed=False, retry_after=max(1, math.ceil(retry)), reason="rate_limited")
+                # The daily quota is a usage limit the user should see as such; the per-minute one is a short pause.
+                reason = "daily_limit" if day_retry >= minute_retry else "rate_limited"
+                return Decision(allowed=False, retry_after=max(1, math.ceil(retry)), reason=reason)
             hits.append(now)
             return Decision(allowed=True)
 

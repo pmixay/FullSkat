@@ -58,4 +58,21 @@
     <string name="effort_high">Высокая</string>
     <string name="effort_xhigh">Очень высокая</string>
     <string name="effort_max">Максимальная</string>
+    <string name="limit_rate_title">Не так быстро</string>
+    <string name="limit_rate_body">Слишком много запросов подряд.</string>
+    <string name="limit_daily_title">Дневной лимит исчерпан</string>
+    <string name="limit_daily_body">Сообщения на сегодня закончились.</string>
+    <string name="limit_quota_title">Кредиты закончились</string>
+    <string name="limit_quota_body">У поставщика модели не осталось кредитов.</string>
+    <string name="limit_busy_title">Поставщик перегружен</string>
+    <string name="limit_busy_body">Сейчас у модели действует ограничение запросов.</string>
+    <string name="limit_retry_in">Повторите через %1$s</string>
+    <string name="limit_retry_later">Повторите позже</string>
+    <string name="duration_s">%1$d с</string>
+    <string name="duration_min">%1$d мин</string>
+    <string name="duration_h">%1$d ч</string>
+    <string name="err_provider_auth">Поставщик модели отклонил ключ сервера</string>
+    <string name="err_no_provider">Ни один поставщик модели не работает</string>
+    <string name="err_model_unavailable">Модель недоступна. Выберите другую.</string>
+    <string name="usage_left">Осталось %1$d%%</string>
 </resources>

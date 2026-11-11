@@ -17,6 +17,8 @@ import androidx.wear.compose.material3.AppScaffold
 import com.fullskat.watch.data.db.DialogEntity
 import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
+import com.fullskat.watch.data.net.ModelEfforts
+import com.fullskat.watch.data.net.ProviderInfo
 import com.fullskat.watch.domain.ErrorKind
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
@@ -43,13 +45,13 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * Renders the real screens on the JVM (Robolectric native graphics) as a 240 dp round display
- * (Galaxy Watch7 44 mm class). Skipped unless run with `-Pscreenshots`; PNGs go to app/build/screenshots.
- * The bezel crop is applied afterwards by a script; the PNGs here are the full square window.
+ * Renders the real screens on the JVM (Robolectric native graphics) as a 216 dp round display:
+ * the Galaxy Watch7 40 mm (SM-L305F), 432 px at 2x. Skipped unless run with `-Pscreenshots`; PNGs go to app/build/screenshots.
+ * The bezel crop is applied afterwards (tools/render/circle.py); the PNGs here are the full square window.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [36], qualifiers = "w240dp-h240dp-round-xhdpi")
+@Config(sdk = [36], qualifiers = "w216dp-h216dp-round-xhdpi")
 class ScreenshotTest {
     companion object {
         @BeforeClass
@@ -277,4 +279,52 @@ class ScreenshotTest {
             )
         }
     }
+
+    // ---- multi-provider model picker, per-model efforts, usage-limit errors ----
+
+    private val claudeModels = listOf("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
+    private val allLevels = listOf("low", "medium", "high", "xhigh", "max")
+
+    private fun seedProviders() = runBlocking {
+        val providers = listOf(
+            ProviderInfo("anthropic", claudeModels, 0.72f, ""),
+            ProviderInfo("openrouter", listOf("openai/gpt-6.1-terra", "openai/gpt-6-luna"), 0.24f, "$4.20"),
+            ProviderInfo("kimi", listOf("kimi-k2.8-preview", "kimi-k3.1-pro"), 0.08f, "$1.60"),
+        )
+        val efforts = (claudeModels + providers[1].models).associateWith { ModelEfforts(allLevels, "medium") } +
+            mapOf("kimi-k3.1-pro" to ModelEfforts(listOf("low", "high", "max"), "high"), "kimi-k2.8-preview" to ModelEfforts(emptyList(), null))
+        container.settings.saveServerModels("claude-haiku-5-5", providers.flatMap { it.models }, "medium", efforts, providers)
+    }
+
+    @Test fun models_grouped_collapsed() {
+        seedProviders()
+        shot("23_models_grouped") { ModelScreen(AppViewModel(container)) {} }
+    }
+
+    @Test fun models_grouped_expanded() {
+        seedProviders()
+        shot("24_models_grouped_open") { ModelScreen(AppViewModel(container)) {} }
+        compose.onNodeWithText("OpenRouter").performClick()
+        compose.mainClock.advanceTimeBy(600)
+        compose.onRoot().captureRoboImage(File(dir, "24_models_grouped_open.png").path)
+    }
+
+    @Test fun effort_limited_model() {
+        seedProviders()
+        runBlocking { container.settings.setModel("kimi-k3.1-pro") }
+        shot("25_effort_limited") { EffortScreen(AppViewModel(container)) {} }
+    }
+
+    private fun limit(name: String, kind: ErrorKind, retryAfterSec: Int) {
+        val id = seed()
+        val vm = AppViewModel(container)
+        turnOf(vm).value = TurnState.Failed(kind, null, retryAfterSec)
+        shot(name) { ChatScreen(vm, id, autoListen = false) }
+    }
+
+    @Test fun limit_daily() = limit("26_limit_daily", ErrorKind.DAILY_LIMIT, 7 * 3600)
+    @Test fun limit_quota() = limit("27_limit_quota", ErrorKind.QUOTA, 0)
+    @Test fun limit_rate() = limit("28_limit_rate", ErrorKind.RATE_LIMITED, 40)
+    @Test fun limit_busy() = limit("29_limit_busy", ErrorKind.PROVIDER_BUSY, 90)
+    @Test fun error_no_provider() = limit("30_error_no_provider", ErrorKind.NO_PROVIDER, 0)
 }

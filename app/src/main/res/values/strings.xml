@@ -59,4 +59,21 @@
     <string name="effort_high">High</string>
     <string name="effort_xhigh">Extra high</string>
     <string name="effort_max">Max</string>
+    <string name="limit_rate_title">Slow down</string>
+    <string name="limit_rate_body">Too many requests in a row.</string>
+    <string name="limit_daily_title">Daily limit reached</string>
+    <string name="limit_daily_body">Today\'s messages are used up.</string>
+    <string name="limit_quota_title">Out of credits</string>
+    <string name="limit_quota_body">The model provider has no credits left.</string>
+    <string name="limit_busy_title">Provider is busy</string>
+    <string name="limit_busy_body">The model is rate limited right now.</string>
+    <string name="limit_retry_in">Try again in %1$s</string>
+    <string name="limit_retry_later">Try again later</string>
+    <string name="duration_s">%1$d s</string>
+    <string name="duration_min">%1$d min</string>
+    <string name="duration_h">%1$d h</string>
+    <string name="err_provider_auth">The model provider rejected the server\'s key</string>
+    <string name="err_no_provider">No model provider is working</string>
+    <string name="err_model_unavailable">Model unavailable. Pick another one.</string>
+    <string name="usage_left">%1$d%% left</string>
 </resources>

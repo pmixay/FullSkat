@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=216,initial-scale=1"><title>Aurora limit</title><style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;width:216px;height:216px;overflow:hidden;background:#000}
+body{font-family:Roboto,"Google Sans",Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
+.scr{position:relative;width:216px;height:216px;overflow:hidden}
+.ab{position:absolute}
+.ic{display:block;flex:none}
+.row{display:flex;align-items:center}
+.ell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+:root{--tx:#F3F4FF;--sub:#A7ACD0;--s1:#0E1022;--s2:#171A33;--line:rgba(170,180,255,.13);
+--grad:linear-gradient(135deg,#7B61FF 0%,#3FD9F2 58%,#4DF0B4 100%)}
+.scr{color:var(--tx)}
+.time{position:absolute;top:9px;left:0;right:0;text-align:center;font-size:12px;font-weight:500;color:var(--sub);letter-spacing:.3px}
+.gbtn{background:var(--grad);color:#090A1C;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 22px rgba(80,150,255,.55),0 0 2px rgba(255,255,255,.4) inset}
+.tbtn{border-radius:50%;display:flex;align-items:center;justify-content:center}
+.pill{border-radius:999px;background:var(--s1);border:1px solid var(--line)}
+.list{position:absolute;left:0;right:0;display:flex;flex-direction:column;gap:4px}
+.item{height:44px;border-radius:22px;background:var(--s1);border:1px solid var(--line);display:flex;align-items:center;padding:0 12px 0 7px;gap:8px;width:100%}
+.dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+.t1{font-size:13.5px;font-weight:500;line-height:17px}
+.t2{font-size:11px;color:var(--sub);line-height:14px}
+.ubub{font-size:14px;line-height:19px;padding:6px 11px;border-radius:17px 17px 5px 17px;
+  background:linear-gradient(135deg,rgba(123,97,255,.42),rgba(63,217,242,.22));border:1px solid rgba(154,139,255,.45);width:max-content}
+.think{display:flex;align-items:center;gap:6px;height:24px;padding:0 8px 0 7px;border-radius:12px;background:rgba(255,198,92,.10);border:1px solid rgba(255,198,92,.28);width:max-content;font-size:11px;color:#E9D3A8}
+.ans{font-size:14px;line-height:19px;color:var(--tx)}
+.li{display:flex;gap:7px;align-items:flex-start;margin-top:3px}
+.num{flex:none;width:16px;height:16px;margin-top:1.5px;border-radius:50%;background:var(--grad);color:#090A1C;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center}
+code{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:#9FF3FF;background:rgba(63,217,242,.14);border-radius:5px;padding:0 4px}
+.half{position:absolute;bottom:0;left:80px;width:56px;height:30px;border-radius:30px 30px 0 0;display:flex;justify-content:center;padding-top:5px}
+.bezel{position:absolute;inset:0;border-radius:50%}
+</style></head><body style="background:#000"><div class="scr">
+<div class="list" style="top:20px;gap:6px;opacity:.28">
+  <div class="ubub" data-fit="6" data-r="12" data-al="e" data-min="60">Что такое бозон Хиггса?</div>
+  <div class="ans" style="padding:0 26px 0 30px">Это частица, которая придаёт массу другим</div>
+</div>
+<div class="ab" style="left:24px;top:58px;width:168px;height:128px;border-radius:64px;background:#110D04;border:1.5px dashed rgba(255,198,92,.55);display:flex;flex-direction:column;align-items:center;padding-top:10px;text-align:center">
+  <span class="ring" style="position:relative;display:inline-flex;width:50px;height:50px;align-items:center;justify-content:center;flex:none"><svg width="50" height="50" style="position:absolute;inset:0;transform:rotate(-90deg)"><circle cx="25.0" cy="25.0" r="23.0" fill="none" stroke="rgba(255,198,92,.16)" stroke-width="4"/><circle cx="25.0" cy="25.0" r="23.0" fill="none" stroke="#FFC65C" stroke-width="4" stroke-linecap="round" stroke-dasharray="96.34 144.51"/></svg><div style="font-size:17px;font-weight:700;color:#FFE3AC;letter-spacing:-.5px">40<span style="font-size:10px;font-weight:600;margin-left:1px">s</span></div></span>
+  <div style="font-size:14px;font-weight:600;margin-top:6px;color:#FFE3AC">Slow down</div>
+  <div style="font-size:11.5px;color:#D9C49A;margin-top:1px">Too many requests</div>
+</div></div><script>
+(function(){
+  var C=108;
+  function chord(top,bot,m,r){
+    var yf=Math.max(Math.abs(top-C),Math.abs(bot-C));
+    var ins=0.3*r; yf=Math.max(0,yf-ins);
+    var R=C-m; if(yf>=R) return 0; return 2*Math.sqrt(R*R-yf*yf)+2*ins;
+  }
+  document.querySelectorAll('[data-fit]').forEach(function(el){
+    var m=+el.dataset.fit||0, r=+(el.dataset.r||0), al=el.dataset.al||'c', minW=+(el.dataset.min||120), s=1;
+    for(var k=0;k<3;k++){
+      el.style.maxWidth='';
+      var b=el.getBoundingClientRect(), w=chord(b.top,b.bottom,m,r);
+      if(w<minW){s=Math.max(.5,w/Math.min(b.width,176)); w=Math.min(b.width,176);} else s=1;
+      el.style.maxWidth=Math.floor(w)+'px';
+    }
+    var b=el.getBoundingClientRect(), w=Math.max(minW,chord(b.top,b.bottom,m,r)), x;
+    if(al==='e') x=C+w/2-b.width; else if(al==='s') x=C-w/2; else x=C-b.width/2;
+    if(s<1){x=C-b.width/2; el.style.opacity=(0.25+0.75*s).toFixed(2);}
+    el.style.transform='translateX('+(x-b.left)+'px)'+(s<1?' scale('+s.toFixed(3)+')':'');
+  });
+})();
+</script></body></html>

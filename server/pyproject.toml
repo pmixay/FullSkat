@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "fullskat-server"
 version = "0.1.0"
-description = "Server for FullSkat, a Wear OS voice assistant: pairing and chat relay (Claude API or OpenRouter)."
+description = "Server for FullSkat, a Wear OS voice assistant: pairing and streaming chat relay across model providers."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
