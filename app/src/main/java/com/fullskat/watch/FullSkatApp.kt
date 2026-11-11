@@ -8,6 +8,10 @@ import com.fullskat.watch.data.net.ApiClient
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.domain.AssistantTurn
 import com.fullskat.watch.speech.LocalSpeech
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /** Hand-rolled dependency container: the app is small enough that a DI framework would only add APK size. */
 class AppContainer(val appContext: Context) {
@@ -28,6 +32,9 @@ class FullSkatApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Start loading the speech model as early as possible, in parallel with the activity and
+        // Compose start-up, so a cold start after the app was swiped away is not waiting on it.
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { container.speech.warmUp() }
     }
 
     companion object {

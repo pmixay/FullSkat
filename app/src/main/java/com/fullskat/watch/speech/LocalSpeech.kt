@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * On-device Russian speech recognition: sherpa-onnx with the streaming Zipformer "small-ru-vosk"
@@ -35,7 +36,41 @@ class LocalSpeech(private val context: Context) {
     }
 
     private fun recognizer(): OnlineRecognizer = synchronized(lock) {
-        recognizer ?: OnlineRecognizer(assetManager = context.assets, config = config()).also { recognizer = it }
+        recognizer ?: create().also { recognizer = it }
+    }
+
+    /**
+     * Loads from a copy of the model in internal storage rather than through the AssetManager: the
+     * files stay in the OS page cache across process restarts (swiping the app away), so a cold start
+     * no longer re-reads and inflates ~23 MB out of the APK. The copy is made once per installed
+     * build; if anything about it fails, loading falls back to the APK assets.
+     */
+    private fun create(): OnlineRecognizer {
+        val dir = runCatching { persistentModelDir() }.onFailure { Log.w(TAG, "model copy failed, using assets", it) }.getOrNull()
+        if (dir != null) {
+            try {
+                return OnlineRecognizer(config = config(dir.absolutePath))
+            } catch (e: Throwable) {
+                Log.w(TAG, "loading the copied model failed, using assets", e)
+                dir.deleteRecursively()
+            }
+        }
+        return OnlineRecognizer(assetManager = context.assets, config = config(ASSET_DIR))
+    }
+
+    private fun persistentModelDir(): File {
+        val build = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        val root = File(context.noBackupFilesDir, "asr")
+        val target = File(root, "ru-$build")
+        if (MODEL_FILES.all { File(target, it).length() > 0 }) return target
+        // Drop copies of older builds, then copy into a temp dir and rename so a kill mid-copy never leaves a half model.
+        root.listFiles()?.forEach { it.deleteRecursively() }
+        val tmp = File(root, "tmp-$build").apply { mkdirs() }
+        for (name in MODEL_FILES) {
+            context.assets.open("$ASSET_DIR/$name").use { input -> File(tmp, name).outputStream().use { input.copyTo(it) } }
+        }
+        if (!tmp.renameTo(target)) throw java.io.IOException("cannot publish the model copy")
+        return target
     }
 
     /**
@@ -82,8 +117,7 @@ class LocalSpeech(private val context: Context) {
         }
     }.flowOn(Dispatchers.Default)
 
-    private fun config(): OnlineRecognizerConfig {
-        val dir = "asr/ru"
+    private fun config(dir: String): OnlineRecognizerConfig {
         return OnlineRecognizerConfig(
             modelConfig = OnlineModelConfig(
                 transducer = OnlineTransducerModelConfig(
@@ -117,6 +151,8 @@ class LocalSpeech(private val context: Context) {
 
     private companion object {
         const val TAG = "LocalSpeech"
+        const val ASSET_DIR = "asr/ru"
+        val MODEL_FILES = listOf("encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt")
         const val SAMPLE_RATE = 16_000
         const val TAIL_SILENCE_SAMPLES = SAMPLE_RATE * 2 / 3
         const val THREADS = 2
