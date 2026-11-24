@@ -84,6 +84,14 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, 
             }
             item {
                 SwitchButton(
+                    checked = cfg.figures,
+                    onCheckedChange = vm::setFigures,
+                    modifier = itemModifier,
+                    label = { Text(stringResource(R.string.settings_figures)) },
+                )
+            }
+            item {
+                SwitchButton(
                     checked = cfg.haptics,
                     onCheckedChange = vm::setHaptics,
                     modifier = itemModifier,

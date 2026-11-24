@@ -277,6 +277,7 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
                 RichText(
                     markdown = text,
                     color = Tokens.onAssistantBubble,
+                    animateFigures = m.pending, // figures draw themselves while the answer arrives
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Tokens.assistantBubble, shape)

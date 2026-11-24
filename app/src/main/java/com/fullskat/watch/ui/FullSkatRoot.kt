@@ -1,6 +1,7 @@
 package com.fullskat.watch.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,6 +18,8 @@ import com.fullskat.watch.LaunchRequest
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.dialogs.DialogsScreen
 import com.fullskat.watch.ui.pair.PairScreen
+import com.fullskat.watch.ui.rich.FigureScreen
+import com.fullskat.watch.ui.rich.LocalFigureOpener
 import com.fullskat.watch.ui.settings.EffortScreen
 import com.fullskat.watch.ui.settings.ModelScreen
 import com.fullskat.watch.ui.settings.SettingsScreen
@@ -29,6 +32,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val MODEL = "model"
     const val EFFORT = "effort"
+    const val FIGURE = "figure"
     const val CHAT = "chat/{dialogId}?listen={listen}"
     fun chat(dialogId: String, listen: Boolean) = "chat/$dialogId?listen=$listen"
 }
@@ -60,7 +64,9 @@ fun FullSkatRoot(
             onLaunchRequestConsumed()
         }
 
+        val openFigure: (String) -> Unit = { json -> vm.showFigure(json); nav.navigate(Routes.FIGURE) }
         AppScaffold {
+          CompositionLocalProvider(LocalFigureOpener provides openFigure) {
             SwipeDismissableNavHost(
                 navController = nav,
                 startDestination = if (cfg.paired) Routes.DIALOGS else Routes.PAIR,
@@ -107,7 +113,12 @@ fun FullSkatRoot(
                 composable(Routes.EFFORT) {
                     EffortScreen(vm = vm, onDone = { nav.popBackStack() })
                 }
+                composable(Routes.FIGURE) {
+                    val json by vm.figure.collectAsStateWithLifecycle()
+                    json?.let { FigureScreen(it) }
+                }
             }
+          }
         }
     }
 }

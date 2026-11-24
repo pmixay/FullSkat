@@ -101,6 +101,7 @@ class ApiClient {
         locale: String,
         effort: String?,
         webSearch: Boolean,
+        figures: Boolean = true,
     ): Flow<ChatEvent> = flow {
         val body = JSONObject()
             .put("dialog_id", dialogId)
@@ -111,6 +112,7 @@ class ApiClient {
         if (model != null) body.put("model", model)
         if (effort != null) body.put("effort", effort)
         body.put("web_search", webSearch)
+        body.put("figures", figures)
         val req = Request.Builder()
             .url("${serverUrl.trimEnd('/')}/v1/chat")
             .header("Authorization", "Bearer $token")

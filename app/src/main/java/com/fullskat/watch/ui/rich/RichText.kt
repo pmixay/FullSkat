@@ -59,6 +59,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import com.fullskat.watch.richtext.RichEnv
 import com.fullskat.watch.richtext.code.Highlighter
 import com.fullskat.watch.richtext.code.Tok
+import com.fullskat.watch.richtext.figure.Figure
 import com.fullskat.watch.richtext.markdown.Align
 import com.fullskat.watch.richtext.markdown.Block
 import com.fullskat.watch.richtext.markdown.Break
@@ -114,19 +115,22 @@ fun RichText(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 16.sp,
     lineHeight: TextUnit = 21.sp,
+    textAlign: TextAlign? = null,
+    /** Play the drawing animation of figures (an answer arriving now); otherwise they appear finished. */
+    animateFigures: Boolean = false,
 ) {
     val blocks = remember(markdown) { Markdown.parse(markdown) }
     val env = RichEnv.get(LocalContext.current)
     val base = MaterialTheme.typography.bodyLarge.copy(color = color, fontSize = fontSize, lineHeight = lineHeight)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        for (b in blocks) BlockView(b, env, base)
+        for (b in blocks) BlockView(b, env, base, textAlign, animateFigures)
     }
 }
 
 @Composable
-private fun BlockView(b: Block, env: RichEnv, base: TextStyle) {
+private fun BlockView(b: Block, env: RichEnv, base: TextStyle, textAlign: TextAlign? = null, animateFigures: Boolean = false) {
     when (b) {
-        is Paragraph -> InlineText(b.inlines, env, base)
+        is Paragraph -> InlineText(b.inlines, env, base, textAlign = textAlign)
         is Heading -> {
             val size = when (b.level) { 1 -> 1.12f; 2 -> 1.06f; else -> 1f }
             val c = if (b.level <= 2) Tokens.accent else base.color
@@ -136,7 +140,7 @@ private fun BlockView(b: Block, env: RichEnv, base: TextStyle) {
                 bold = true,
             )
         }
-        is CodeBlock -> CodeBlockView(b, base)
+        is CodeBlock -> if (b.language.equals("figure", ignoreCase = true)) FigureOrCode(b, base, animateFigures) else CodeBlockView(b, base)
         is DisplayMath -> MathBlock(b.latex, env, base)
         is ListItem -> Row {
             val markerWidth = when {
@@ -286,6 +290,19 @@ private fun MathBlock(latex: String, env: RichEnv, base: TextStyle) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             if (wPx <= maxPx + 0.5f) formula() else Box(Modifier.horizontalScroll(rememberScrollState())) { formula() }
         }
+    }
+}
+
+// ------------------------------------------------------------------ figures
+
+/** A ```figure block drawn natively; while it streams in, a placeholder; if it is not a figure after all, the code. */
+@Composable
+private fun FigureOrCode(b: CodeBlock, base: TextStyle, animate: Boolean) {
+    val figure = remember(b.code) { runCatching { Figure.parse(b.code) }.getOrNull() }
+    when {
+        figure != null -> FigureBlock(figure, b.code, animate)
+        !b.closed -> FigurePlaceholder()
+        else -> CodeBlockView(b, base)
     }
 }
 

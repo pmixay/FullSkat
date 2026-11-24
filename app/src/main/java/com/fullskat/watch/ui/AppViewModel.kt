@@ -127,6 +127,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.settings.setWebSearch(enabled) }
     }
 
+    fun setFigures(enabled: Boolean) {
+        viewModelScope.launch { container.settings.setFigures(enabled) }
+    }
+
+    private val _figure = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** The figure open in the full-screen viewer (its ```figure JSON). */
+    val figure: kotlinx.coroutines.flow.StateFlow<String?> = _figure
+
+    fun showFigure(json: String) {
+        _figure.value = json
+    }
+
     fun setHaptics(enabled: Boolean) {
         viewModelScope.launch { container.settings.setHaptics(enabled) }
     }

@@ -37,6 +37,8 @@ data class Settings(
     val providers: List<ProviderInfo>,
     val webSearch: Boolean,
     val haptics: Boolean,
+    /** Let the model draw figures (graphs, charts, geometry) that the watch renders. */
+    val figures: Boolean = true,
 ) {
     val paired: Boolean get() = !token.isNullOrBlank()
 
@@ -75,6 +77,7 @@ class SettingsRepository(private val context: Context) {
         val SERVER_PROVIDERS = stringPreferencesKey("server_providers")
         val WEB_SEARCH = booleanPreferencesKey("web_search")
         val HAPTICS = booleanPreferencesKey("haptics")
+        val FIGURES = booleanPreferencesKey("figures")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { p ->
@@ -93,6 +96,7 @@ class SettingsRepository(private val context: Context) {
             providers = p[Keys.SERVER_PROVIDERS]?.let(::decodeProviders).orEmpty(),
             webSearch = p[Keys.WEB_SEARCH] ?: true,
             haptics = p[Keys.HAPTICS] ?: true,
+            figures = p[Keys.FIGURES] ?: true,
         )
     }
 
@@ -174,6 +178,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setWebSearch(enabled: Boolean) = context.dataStore.edit { it[Keys.WEB_SEARCH] = enabled }
 
     suspend fun setHaptics(enabled: Boolean) = context.dataStore.edit { it[Keys.HAPTICS] = enabled }
+
+    suspend fun setFigures(enabled: Boolean) = context.dataStore.edit { it[Keys.FIGURES] = enabled }
 }
 
 private fun encodeModelEfforts(all: Map<String, ModelEfforts>): String = JSONObject().apply {
