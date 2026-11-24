@@ -26,7 +26,7 @@ dialogs stay there too. A small server you host holds the API keys and relays th
 | Complication | Round watch-face widget showing only a mic icon (monochromatic or small image) that starts a new dialog. |
 | Pairing | The app is fixed to `https://skat.arbuz.lol` (there is no address field). Enter a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
 | Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1, and configured OpenRouter, Kimi Code and OpenAI gateway models (GPT-6.1 Terra, GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra). The list comes from the server and is grouped by provider (collapsed by default, each with a ring showing its budget left); it shows providers whose probes pass. Server-side additions need no watch reinstall. |
-| Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). |
+| Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). An answer that used the web gets a collapsed "Sources (n)" row under it (Claude, OpenRouter and OpenAI models report them); expanded, it lists each page's site and title, and a tap opens the page in the paired phone's browser (or a browser on the watch, if there is one). |
 | Languages | Speech recognition is Russian-only. The assistant answers in the language the text is in. UI is localized in English and Russian. |
 
 ### Power notes
