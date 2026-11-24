@@ -59,6 +59,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -83,6 +84,7 @@ import java.io.File
 @Composable
 fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -> Unit, onModel: () -> Unit) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val messages by vm.messages.collectAsStateWithLifecycle()
     val dialog by vm.dialog.collectAsStateWithLifecycle()
     val turn by vm.turn.collectAsStateWithLifecycle()
@@ -109,7 +111,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
             }
             override fun onError(error: VoiceError) {
                 listening = false
-                scope.launch { snackbar.showSnackbar(context.getString(voiceErrorText(error))) }
+                scope.launch { snackbar.showSnackbar(resources.getString(voiceErrorText(error))) }
             }
         })
     }
@@ -120,7 +122,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
         voice.start()
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startVoice() else scope.launch { snackbar.showSnackbar(context.getString(R.string.err_mic_permission)) }
+        if (granted) startVoice() else scope.launch { snackbar.showSnackbar(resources.getString(R.string.err_mic_permission)) }
     }
 
     // ---------------------------------------------------------------- images
@@ -233,7 +235,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
                             takePicture.launch(uri)
                         } catch (e: ActivityNotFoundException) {
                             cameraUri = null
-                            scope.launch { snackbar.showSnackbar(context.getString(R.string.err_no_camera)) }
+                            scope.launch { snackbar.showSnackbar(resources.getString(R.string.err_no_camera)) }
                         }
                     },
                     onAction = {

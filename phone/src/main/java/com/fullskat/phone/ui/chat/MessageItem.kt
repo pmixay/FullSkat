@@ -3,7 +3,6 @@ package com.fullskat.phone.ui.chat
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
@@ -54,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.fullskat.core.db.MessageEntity
 import com.fullskat.core.net.AttachmentRef
 import com.fullskat.core.net.MessageStatus
@@ -294,7 +294,7 @@ fun SourcesBlock(sources: List<WebSource>) {
 fun openLink(context: Context, url: String) {
     if (!WebSources.isWebUrl(url)) return
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (e: ActivityNotFoundException) {
         Toast.makeText(context, R.string.no_browser, Toast.LENGTH_SHORT).show()
     }

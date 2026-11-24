@@ -259,7 +259,10 @@ val area = PI * r * r // 28.27
 
     // ---------------------------------------------------------------- onboarding and the list
 
-    @Test fun onboarding() = shot("01_onboarding") { OnboardingScreen(OnboardingViewModel(app)) {} }
+    @Test fun onboarding() {
+        val vm = OnboardingViewModel(app)
+        shot("01_onboarding") { OnboardingScreen(vm) {} }
+    }
 
     @Test fun onboarding_error() {
         val vm = OnboardingViewModel(app)
@@ -271,17 +274,22 @@ val area = PI * r * r // 28.27
 
     @Test fun dialogs() {
         seedDialogs()
-        shot("03_dialogs") { DialogsScreen(DialogsViewModel(app), {}, {}) }
+        val vm = DialogsViewModel(app)
+        shot("03_dialogs") { DialogsScreen(vm, {}, {}) }
     }
 
-    @Test fun dialogs_empty() = shot("04_dialogs_empty") { DialogsScreen(DialogsViewModel(app), {}, {}) }
+    @Test fun dialogs_empty() {
+        val vm = DialogsViewModel(app)
+        shot("04_dialogs_empty") { DialogsScreen(vm, {}, {}) }
+    }
 
     // ---------------------------------------------------------------- chat
 
     @Test fun chat_rich() {
         seedSession()
         val id = seedChat()
-        shot("05_chat_rich_top") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("05_chat_rich_top") { ChatScreen(vm, {}, {}, {}) }
         compose.onNode(hasScrollAction()).performScrollToIndex(0)
         settle()
         capture("05_chat_rich_top")
@@ -290,7 +298,8 @@ val area = PI * r * r // 28.27
     @Test fun chat_rich_expanded() {
         seedSession()
         val id = seedChat()
-        shot("06_chat_rich_bottom") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("06_chat_rich_bottom") { ChatScreen(vm, {}, {}, {}) }
         compose.onNodeWithText("Sources (3)").performClick()
         settle()
         compose.onNode(hasScrollAction()).performScrollToIndex(2)
@@ -301,7 +310,8 @@ val area = PI * r * r // 28.27
     @Test fun chat_thinking_expanded() {
         seedSession()
         val id = seedChat()
-        shot("07_chat_thinking") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("07_chat_thinking") { ChatScreen(vm, {}, {}, {}) }
         compose.onNode(hasScrollAction()).performScrollToIndex(1)
         settle()
         compose.onNodeWithText("Thinking").performClick()
@@ -329,26 +339,30 @@ val area = PI * r * r // 28.27
             cacheImage("up_3.jpg", 400, 300, 0xFF8E7A23.toInt(), 0xFF2B250E.toInt()),
         ).map { Uri.fromFile(it) }
         app.turns.show(id, Turn.Uploading(Draft("Что общего у этих снимков?", files), done = 1))
-        shot("09_chat_uploading") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("09_chat_uploading") { ChatScreen(vm, {}, {}, {}) }
     }
 
     @Test fun chat_limit() {
         seedSession()
         val id = seedChat()
         app.turns.show(id, Turn.Failed(ChatError.DAILY_LIMIT, retryAfterSec = 3 * 3600))
-        shot("10_chat_limit") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("10_chat_limit") { ChatScreen(vm, {}, {}, {}) }
     }
 
     @Test fun chat_states() {
         seedSession()
         val id = seedStates()
-        shot("11_chat_states") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("11_chat_states") { ChatScreen(vm, {}, {}, {}) }
     }
 
     @Test fun chat_empty() {
         seedSession()
         val id = runBlocking { app.core.sync.newDialog() }
-        shot("12_chat_empty") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("12_chat_empty") { ChatScreen(vm, {}, {}, {}) }
     }
 
     @Test fun figure_viewer() {
@@ -375,17 +389,20 @@ val area = PI * r * r // 28.27
 
     @Test fun settings() {
         seedSession()
-        shot("16_settings") { SettingsScreen(SettingsViewModel(app), {}, {}, {}, {}) }
+        val vm = SettingsViewModel(app)
+        shot("16_settings") { SettingsScreen(vm, {}, {}, {}, {}) }
     }
 
     @Test fun model_picker() {
         seedSession()
-        shot("17_model_picker") { ModelScreen(SettingsViewModel(app), {}, initiallyExpanded = setOf("anthropic", "openai")) }
+        val vm = SettingsViewModel(app)
+        shot("17_model_picker") { ModelScreen(vm, {}, initiallyExpanded = setOf("anthropic", "openai")) }
     }
 
     @Test fun model_picker_collapsed() {
         seedSession()
-        shot("18_model_picker_collapsed") { ModelScreen(SettingsViewModel(app), {}) }
+        val vm = SettingsViewModel(app)
+        shot("18_model_picker_collapsed") { ModelScreen(vm, {}) }
     }
 
     @Test fun link_watch() = shot("19_link_watch") { LinkWatchContent("K7Q2", LinkState.Entering, {}, {}, {}, {}) }
@@ -413,7 +430,8 @@ val area = PI * r * r // 28.27
 
     @Test fun effort_dialog() {
         seedSession()
-        shot("23_effort_dialog") { SettingsScreen(SettingsViewModel(app), {}, {}, {}, {}) }
+        val vm = SettingsViewModel(app)
+        shot("23_effort_dialog") { SettingsScreen(vm, {}, {}, {}, {}) }
         compose.onNodeWithText("Thinking effort").performClick()
         settle()
         captureScreen("23_effort_dialog")
@@ -422,7 +440,8 @@ val area = PI * r * r // 28.27
     @Test fun attach_menu() {
         seedSession()
         val id = seedChat()
-        shot("24_attach_menu") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("24_attach_menu") { ChatScreen(vm, {}, {}, {}) }
         compose.onNodeWithContentDescription("Attach images").performClick()
         settle()
         captureScreen("24_attach_menu")
@@ -430,7 +449,8 @@ val area = PI * r * r // 28.27
 
     @Test fun dialog_menu() {
         seedDialogs()
-        shot("25_dialog_menu") { DialogsScreen(DialogsViewModel(app), {}, {}) }
+        val vm = DialogsViewModel(app)
+        shot("25_dialog_menu") { DialogsScreen(vm, {}, {}) }
         compose.onNodeWithText("Какая завтра погода в Москве?").performTouchInput { longClick() }
         settle()
         captureScreen("25_dialog_menu")
@@ -439,12 +459,16 @@ val area = PI * r * r // 28.27
     // ---------------------------------------------------------------- Russian
 
     @Config(qualifiers = "+ru")
-    @Test fun onboarding_ru() = shot("26_onboarding_ru") { OnboardingScreen(OnboardingViewModel(app)) {} }
+    @Test fun onboarding_ru() {
+        val vm = OnboardingViewModel(app)
+        shot("26_onboarding_ru") { OnboardingScreen(vm) {} }
+    }
 
     @Config(qualifiers = "+ru")
     @Test fun settings_ru() {
         seedSession()
-        shot("27_settings_ru") { SettingsScreen(SettingsViewModel(app), {}, {}, {}, {}) }
+        val vm = SettingsViewModel(app)
+        shot("27_settings_ru") { SettingsScreen(vm, {}, {}, {}, {}) }
     }
 
     @Config(qualifiers = "+ru")
@@ -453,7 +477,8 @@ val area = PI * r * r // 28.27
         val id = seedStates()
         val files = listOf(cacheImage("ru_1.jpg", 400, 300, 0xFF8E2341.toInt(), 0xFF2B0E14.toInt())).map { Uri.fromFile(it) }
         app.turns.show(id, Turn.Uploading(Draft("Что на этом снимке?", files), done = 0))
-        shot("28_chat_uploading_ru") { ChatScreen(ChatViewModel(app, id), {}, {}, {}) }
+        val vm = ChatViewModel(app, id)
+        shot("28_chat_uploading_ru") { ChatScreen(vm, {}, {}, {}) }
     }
 
     @Config(qualifiers = "+ru")
