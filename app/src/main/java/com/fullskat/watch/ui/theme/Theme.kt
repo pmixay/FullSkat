@@ -1,7 +1,10 @@
 package com.fullskat.watch.ui.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import com.fullskat.core.ui.rich.LocalRichTextStyle
 import androidx.compose.ui.graphics.Color
+import com.fullskat.core.ui.theme.Ember
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
 
@@ -10,20 +13,20 @@ import androidx.wear.compose.material3.MaterialTheme
  * a round floating mic button and a bezel ring that breathes while listening.
  */
 object Tokens {
-    val accent = Color(0xFFFFB35C)
-    val onAccent = Color(0xFF1A1200)
-    val background = Color(0xFF121212)
-    val surface = Color(0xFF1E1F24)
-    val surfaceHigh = Color(0xFF2A2A2A)
-    val userBubble = Color(0xFF3A2A12)
-    val onUserBubble = Color(0xFFFFE1BE)
-    val assistantBubble = Color(0xFF1E1F24)
-    val onAssistantBubble = Color(0xFFF1F1F1)
-    val userText = Color(0xFFB8B3AA)
-    val assistantText = Color(0xFFF1F1F1)
-    val label = Color(0xFF8A857C)
-    val error = Color(0xFFFFB4AB)
-    val onError = Color(0xFF3A0A06)
+    val accent = Ember.accent
+    val onAccent = Ember.onAccent
+    val background = Ember.background
+    val surface = Ember.surface
+    val surfaceHigh = Ember.surfaceHigh
+    val userBubble = Ember.userBubble
+    val onUserBubble = Ember.onUserBubble
+    val assistantBubble = Ember.assistantBubble
+    val onAssistantBubble = Ember.onAssistantBubble
+    val userText = Ember.userText
+    val assistantText = Ember.assistantText
+    val label = Ember.label
+    val error = Ember.error
+    val onError = Ember.onError
 }
 
 private val scheme = ColorScheme(
@@ -59,5 +62,7 @@ private val scheme = ColorScheme(
 
 @Composable
 fun FullSkatTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme) {
+        CompositionLocalProvider(LocalRichTextStyle provides MaterialTheme.typography.bodyLarge, content = content)
+    }
 }

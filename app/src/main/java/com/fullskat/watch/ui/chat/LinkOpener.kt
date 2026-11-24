@@ -7,7 +7,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.concurrent.futures.await
 import androidx.wear.remote.interactions.RemoteActivityHelper
-import com.fullskat.watch.data.net.WebSources
+import com.fullskat.core.net.WebSources
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException

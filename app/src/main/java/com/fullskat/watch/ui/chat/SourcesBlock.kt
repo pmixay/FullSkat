@@ -40,7 +40,7 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.confirmationDialogCurvedText
 import androidx.wear.compose.material3.openOnPhoneDialogCurvedText
 import com.fullskat.watch.R
-import com.fullskat.watch.data.net.WebSource
+import com.fullskat.core.net.WebSource
 import com.fullskat.watch.ui.theme.Tokens
 import kotlinx.coroutines.launch
 

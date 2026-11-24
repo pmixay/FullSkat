@@ -76,7 +76,6 @@
     <string name="err_no_provider">No model provider is working</string>
     <string name="err_model_unavailable">Model unavailable. Pick another one.</string>
     <string name="usage_left">%1$d%% left</string>
-    <string name="figure_drawing">Drawing…</string>
     <string name="settings_figures">Drawings</string>
     <string name="sources_title">Sources (%1$d)</string>
     <string name="open_link">Open link</string>

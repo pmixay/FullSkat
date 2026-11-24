@@ -20,10 +20,10 @@ import androidx.wear.compose.material3.AppScaffold
 import com.fullskat.watch.data.db.DialogEntity
 import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
-import com.fullskat.watch.richtext.figure.Figure
+import com.fullskat.core.richtext.figure.Figure
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.chat.ChatScreen
-import com.fullskat.watch.ui.rich.FigureBlock
+import com.fullskat.core.ui.rich.FigureBlock
 import com.fullskat.watch.ui.rich.FigureScreen
 import com.fullskat.watch.ui.theme.FullSkatTheme
 import com.fullskat.watch.ui.theme.Tokens

@@ -20,6 +20,7 @@ coroutines = "1.11.0"
 concurrentFutures = "1.3.0"
 splashscreen = "1.2.0"
 junit = "4.13.2"
+exifinterface = "1.4.1"
 sherpaOnnx = "2.0.1"
 
 [libraries]
@@ -53,8 +54,10 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 concurrent-futures = { group = "androidx.concurrent", name = "concurrent-futures", version.ref = "concurrentFutures" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

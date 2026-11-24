@@ -15,7 +15,7 @@ import com.fullskat.watch.data.net.ApiClient
 import com.fullskat.watch.data.net.ApiException
 import com.fullskat.watch.data.net.ChatEvent
 import com.fullskat.watch.data.net.ChatMessage
-import com.fullskat.watch.data.net.WebSources
+import com.fullskat.core.net.WebSources
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.speech.ListenEvent
 import com.fullskat.watch.speech.LocalSpeech

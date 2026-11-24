@@ -30,3 +30,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "FullSkat"
 include(":app")
+include(":core")

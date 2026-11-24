@@ -18,7 +18,7 @@ import com.fullskat.watch.data.db.Role
 import com.fullskat.watch.richtext.MathExamples
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.chat.ChatScreen
-import com.fullskat.watch.ui.rich.RichText
+import com.fullskat.core.ui.rich.RichText
 import com.fullskat.watch.ui.theme.FullSkatTheme
 import com.fullskat.watch.ui.theme.Tokens
 import com.github.takahirom.roborazzi.captureRoboImage

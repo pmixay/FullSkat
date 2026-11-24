@@ -19,8 +19,8 @@ import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
 import com.fullskat.watch.data.net.ModelEfforts
 import com.fullskat.watch.data.net.ProviderInfo
-import com.fullskat.watch.data.net.WebSource
-import com.fullskat.watch.data.net.WebSources
+import com.fullskat.core.net.WebSource
+import com.fullskat.core.net.WebSources
 import com.fullskat.watch.domain.ErrorKind
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel

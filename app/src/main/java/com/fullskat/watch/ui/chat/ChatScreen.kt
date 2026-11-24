@@ -69,13 +69,13 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.R
 import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
-import com.fullskat.watch.data.net.WebSources
+import com.fullskat.core.net.WebSources
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
 import com.fullskat.watch.ui.components.UsageLimitCard
 import com.fullskat.watch.ui.components.errorText
-import com.fullskat.watch.ui.rich.RichText
+import com.fullskat.core.ui.rich.RichText
 import com.fullskat.watch.ui.theme.Tokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

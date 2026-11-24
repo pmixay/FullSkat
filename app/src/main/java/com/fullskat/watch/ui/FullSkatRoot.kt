@@ -19,7 +19,7 @@ import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.dialogs.DialogsScreen
 import com.fullskat.watch.ui.pair.PairScreen
 import com.fullskat.watch.ui.rich.FigureScreen
-import com.fullskat.watch.ui.rich.LocalFigureOpener
+import com.fullskat.core.ui.rich.LocalFigureOpener
 import com.fullskat.watch.ui.settings.EffortScreen
 import com.fullskat.watch.ui.settings.ModelScreen
 import com.fullskat.watch.ui.settings.SettingsScreen
