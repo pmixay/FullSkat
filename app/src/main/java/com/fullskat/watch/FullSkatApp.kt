@@ -34,12 +34,16 @@ class FullSkatApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Before v2 the dialogs lived only in this watch's own database; they now come from the account on the server.
+        if (getDatabasePath(LEGACY_DB).exists()) deleteDatabase(LEGACY_DB)
         // Start loading the speech model as early as possible, in parallel with the activity and
         // Compose start-up, so a cold start after the app was swiped away is not waiting on it.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { container.speech.warmUp() }
     }
 
     companion object {
+        private const val LEGACY_DB = "fullskat.db"
+
         fun container(context: Context): AppContainer = (context.applicationContext as FullSkatApp).container
     }
 }
