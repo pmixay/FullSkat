@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">FullSkat</string>
+
+    <!-- Common -->
+    <string name="back">Back</string>
+    <string name="close">Close</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="done">Done</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete</string>
+    <string name="rename">Rename</string>
+    <string name="retry">Retry</string>
+    <string name="refresh">Refresh</string>
+    <string name="more">More options</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="expand">Expand</string>
+    <string name="collapse">Collapse</string>
+    <string name="copy">Copy</string>
+    <string name="copied">Copied</string>
+    <string name="time_now">now</string>
+    <string name="offline">Offline · showing saved dialogs</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_intro">Chat with AI models by text, voice and photos. Your dialogs follow you to your watch.</string>
+    <string name="onboarding_name">Your name</string>
+    <string name="onboarding_passcode">Server passcode</string>
+    <string name="onboarding_passcode_hint">4 to 8 digits</string>
+    <string name="onboarding_sign_up">Sign up</string>
+    <string name="onboarding_first_note">The passcode is the invitation to this server. The first person to sign up on a new server chooses it; everyone after needs the same passcode.</string>
+    <string name="onboarding_server">Server: %1$s</string>
+    <string name="onboarding_wrong">Wrong passcode</string>
+    <string name="onboarding_locked">Too many attempts. Try again in %1$s.</string>
+    <string name="onboarding_offline">Server unreachable. Check your connection.</string>
+    <string name="onboarding_server_error">Server error: %1$s</string>
+    <string name="onboarding_first_done">You are the first here: your passcode is now the server passcode.</string>
+
+    <!-- Dialogs -->
+    <string name="settings">Settings</string>
+    <string name="new_dialog">New dialog</string>
+    <string name="no_dialogs">No dialogs yet</string>
+    <string name="no_dialogs_hint">Start one with the button below, or ask your watch.</string>
+    <string name="no_messages">No messages yet</string>
+    <string name="untitled">Untitled</string>
+    <string name="delete_dialog">Delete dialog</string>
+    <string name="delete_dialog_q">Delete this dialog?</string>
+    <string name="rename_dialog">Rename dialog</string>
+    <string name="preview_figure">drawing</string>
+    <string name="preview_code">code</string>
+
+    <!-- Chat -->
+    <string name="empty_dialog">Ask anything: type, dictate or attach a photo.</string>
+    <string name="message_hint">Message</string>
+    <string name="listening">Listening…</string>
+    <string name="mic">Dictate</string>
+    <string name="mic_stop">Stop dictation</string>
+    <string name="send">Send</string>
+    <string name="stop">Stop</string>
+    <string name="attach">Attach images</string>
+    <string name="attach_gallery">Gallery</string>
+    <string name="attach_camera">Camera</string>
+    <string name="attached_image">Attached image</string>
+    <string name="remove_image">Remove image</string>
+    <string name="open_image">Open image</string>
+    <string name="image_unavailable">The image is not available</string>
+    <string name="uploading_images">Uploading image %1$d of %2$d…</string>
+    <string name="sending">Sending…</string>
+    <string name="not_sent">Not sent · tap to retry</string>
+    <string name="answer_failed">The answer failed</string>
+    <string name="answer_failed_why">The answer failed: %1$s</string>
+    <string name="thinking_title">Thinking</string>
+    <string name="sources_title">Sources (%1$d)</string>
+    <string name="open_link">Open link</string>
+    <string name="link_copied">Link copied</string>
+    <string name="no_browser">No browser to open the link</string>
+    <string name="scroll_to_latest">Scroll to latest</string>
+    <string name="figure_replay">Draw again</string>
+    <string name="figure_hint">Pinch to zoom, drag to move, double tap to reset</string>
+    <string name="figure_hint_pie">Double tap to draw again</string>
+    <string name="figure_unavailable">This drawing cannot be shown</string>
+
+    <!-- Errors -->
+    <string name="err_network">No connection</string>
+    <string name="err_signed_out">This device is no longer signed in</string>
+    <string name="err_rate">Too many requests. Wait a moment.</string>
+    <string name="err_server">Server error</string>
+    <string name="err_provider_auth">The model provider rejected the server\'s key</string>
+    <string name="err_no_provider">No model provider is working</string>
+    <string name="err_model_unavailable">Model unavailable. Pick another one.</string>
+    <string name="err_image_unsupported">The server cannot read this image</string>
+    <string name="err_image_unreadable">Couldn\'t read the image. Pick it again.</string>
+    <string name="err_mic_permission">Allow microphone access to dictate</string>
+    <string name="err_nothing_heard">Nothing heard</string>
+    <string name="err_speech">Speech recognition failed</string>
+    <string name="err_speech_network">Speech recognition needs a connection for this language</string>
+    <string name="err_speech_busy">Speech recognition is busy. Try again.</string>
+    <string name="err_speech_unavailable">Speech recognition is not available on this phone</string>
+    <string name="err_no_camera">No camera app</string>
+    <string name="err_rename">Couldn\'t rename. Check your connection.</string>
+    <string name="err_unlink">Couldn\'t unlink the device. Check your connection.</string>
+    <string name="limit_rate_title">Slow down</string>
+    <string name="limit_rate_body">Too many requests in a row.</string>
+    <string name="limit_daily_title">Daily limit reached</string>
+    <string name="limit_daily_body">Today\'s messages are used up.</string>
+    <string name="limit_quota_title">Out of credits</string>
+    <string name="limit_quota_body">The model provider has no credits left.</string>
+    <string name="limit_busy_title">Provider is busy</string>
+    <string name="limit_busy_body">The model is rate limited right now.</string>
+    <string name="limit_retry_in">Try again in %1$s</string>
+    <string name="limit_retry_later">Try again later</string>
+    <string name="duration_s">%1$d s</string>
+    <string name="duration_min">%1$d min</string>
+    <string name="duration_h">%1$d h</string>
+
+    <!-- Settings -->
+    <string name="settings_account">Account</string>
+    <string name="settings_name_hint">Your name · tap to change</string>
+    <string name="settings_your_name">Your name</string>
+    <string name="settings_assistant">Assistant</string>
+    <string name="settings_model">Model</string>
+    <string name="settings_model_note">The model, effort, web search and drawings are shared with your watch. The rings show each provider\'s budget left.</string>
+    <string name="settings_effort">Thinking effort</string>
+    <string name="settings_web_search">Web search</string>
+    <string name="settings_web_search_desc">Look up news, weather, prices and other fresh facts</string>
+    <string name="settings_figures">Drawings</string>
+    <string name="settings_figures_desc">Graphs, charts and diagrams in answers</string>
+    <string name="settings_off_on_server">Turned off on the server</string>
+    <string name="settings_shared_note">These settings are shared with your watch.</string>
+    <string name="settings_devices">Devices</string>
+    <string name="settings_about">About</string>
+    <string name="settings_server_version">%1$s · version %2$s</string>
+    <string name="effort_default">Default</string>
+    <string name="effort_fixed">Not adjustable for this model</string>
+    <string name="effort_none">None</string>
+    <string name="effort_minimal">Minimal</string>
+    <string name="effort_low">Low</string>
+    <string name="effort_medium">Medium</string>
+    <string name="effort_high">High</string>
+    <string name="effort_xhigh">Extra high</string>
+    <string name="effort_max">Max</string>
+    <string name="usage_left">%1$d%% left</string>
+    <string name="sign_out">Sign out</string>
+    <string name="sign_out_q">Sign out of FullSkat?</string>
+    <string name="sign_out_desc">This phone forgets your dialogs and is unlinked from your account. Your watch and other devices stay signed in.</string>
+
+    <!-- Link a watch -->
+    <string name="link_watch">Link a watch</string>
+    <string name="link_watch_desc">Enter the code your watch shows</string>
+    <string name="link_instructions">Open FullSkat on your watch. It shows a six-character code; type it here.</string>
+    <string name="link_code_label">Link code</string>
+    <string name="link_code_changes">The code changes every 30 seconds. Letters and digits, no O, 0, I or 1.</string>
+    <string name="link_button">Link</string>
+    <string name="link_claiming">Linking…</string>
+    <string name="link_wrong">Wrong or expired code. Check the watch and try again.</string>
+    <string name="link_locked">Too many attempts. Try again in %1$s.</string>
+    <string name="link_failed">Couldn\'t link: %1$s</string>
+    <string name="link_done_title">Linked</string>
+    <string name="link_done_body">The watch now uses your account: your dialogs and settings are on it.</string>
+    <string name="link_another">Link another device</string>
+
+    <!-- Devices -->
+    <string name="devices">Devices</string>
+    <string name="devices_desc">Phones and watches signed in to your account</string>
+    <string name="device_this">This phone</string>
+    <string name="device_watch">Watch</string>
+    <string name="device_phone">Phone</string>
+    <string name="device_other">Device</string>
+    <string name="device_unnamed">Unnamed device</string>
+    <string name="device_last_seen">seen %1$s</string>
+    <string name="unlink">Unlink</string>
+    <string name="unlink_q">Unlink %1$s?</string>
+    <string name="unlink_desc">It is signed out and returns to its setup screen. You can link it again with a new code.</string>
+</resources>

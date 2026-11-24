@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Common -->
+    <string name="back">Назад</string>
+    <string name="close">Закрыть</string>
+    <string name="cancel">Отмена</string>
+    <string name="ok">ОК</string>
+    <string name="done">Готово</string>
+    <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
+    <string name="rename">Переименовать</string>
+    <string name="retry">Повторить</string>
+    <string name="refresh">Обновить</string>
+    <string name="more">Ещё</string>
+    <string name="dismiss">Скрыть</string>
+    <string name="expand">Развернуть</string>
+    <string name="collapse">Свернуть</string>
+    <string name="copy">Копировать</string>
+    <string name="copied">Скопировано</string>
+    <string name="time_now">сейчас</string>
+    <string name="offline">Нет сети · показаны сохранённые диалоги</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_intro">Общайтесь с ИИ-моделями текстом, голосом и фото. Диалоги доступны и на часах.</string>
+    <string name="onboarding_name">Ваше имя</string>
+    <string name="onboarding_passcode">Код сервера</string>
+    <string name="onboarding_passcode_hint">От 4 до 8 цифр</string>
+    <string name="onboarding_sign_up">Зарегистрироваться</string>
+    <string name="onboarding_first_note">Код — это приглашение на сервер. Первый, кто регистрируется на новом сервере, сам придумывает код; остальным нужен тот же код.</string>
+    <string name="onboarding_server">Сервер: %1$s</string>
+    <string name="onboarding_wrong">Неверный код</string>
+    <string name="onboarding_locked">Слишком много попыток. Попробуйте через %1$s.</string>
+    <string name="onboarding_offline">Сервер недоступен. Проверьте подключение.</string>
+    <string name="onboarding_server_error">Ошибка сервера: %1$s</string>
+    <string name="onboarding_first_done">Вы здесь первый: ваш код стал кодом сервера.</string>
+
+    <!-- Dialogs -->
+    <string name="settings">Настройки</string>
+    <string name="new_dialog">Новый диалог</string>
+    <string name="no_dialogs">Диалогов пока нет</string>
+    <string name="no_dialogs_hint">Начните новый кнопкой внизу или спросите часы.</string>
+    <string name="no_messages">Сообщений пока нет</string>
+    <string name="untitled">Без названия</string>
+    <string name="delete_dialog">Удалить диалог</string>
+    <string name="delete_dialog_q">Удалить этот диалог?</string>
+    <string name="rename_dialog">Переименовать диалог</string>
+    <string name="preview_figure">рисунок</string>
+    <string name="preview_code">код</string>
+
+    <!-- Chat -->
+    <string name="empty_dialog">Спросите что угодно: напишите, продиктуйте или прикрепите фото.</string>
+    <string name="message_hint">Сообщение</string>
+    <string name="listening">Слушаю…</string>
+    <string name="mic">Диктовать</string>
+    <string name="mic_stop">Остановить диктовку</string>
+    <string name="send">Отправить</string>
+    <string name="stop">Остановить</string>
+    <string name="attach">Прикрепить изображения</string>
+    <string name="attach_gallery">Галерея</string>
+    <string name="attach_camera">Камера</string>
+    <string name="attached_image">Прикреплённое изображение</string>
+    <string name="remove_image">Убрать изображение</string>
+    <string name="open_image">Открыть изображение</string>
+    <string name="image_unavailable">Изображение недоступно</string>
+    <string name="uploading_images">Загрузка изображения %1$d из %2$d…</string>
+    <string name="sending">Отправка…</string>
+    <string name="not_sent">Не отправлено · нажмите, чтобы повторить</string>
+    <string name="answer_failed">Ответ не получен</string>
+    <string name="answer_failed_why">Ответ не получен: %1$s</string>
+    <string name="thinking_title">Размышления</string>
+    <string name="sources_title">Источники (%1$d)</string>
+    <string name="open_link">Открыть ссылку</string>
+    <string name="link_copied">Ссылка скопирована</string>
+    <string name="no_browser">Нет браузера, чтобы открыть ссылку</string>
+    <string name="scroll_to_latest">К последнему сообщению</string>
+    <string name="figure_replay">Нарисовать заново</string>
+    <string name="figure_hint">Сведите пальцы для масштаба, двигайте, двойное касание — сброс</string>
+    <string name="figure_hint_pie">Двойное касание — нарисовать заново</string>
+    <string name="figure_unavailable">Этот рисунок не удаётся показать</string>
+
+    <!-- Errors -->
+    <string name="err_network">Нет подключения</string>
+    <string name="err_signed_out">Это устройство больше не подключено к аккаунту</string>
+    <string name="err_rate">Слишком много запросов. Подождите немного.</string>
+    <string name="err_server">Ошибка сервера</string>
+    <string name="err_provider_auth">Провайдер модели отклонил ключ сервера</string>
+    <string name="err_no_provider">Ни один провайдер моделей не работает</string>
+    <string name="err_model_unavailable">Модель недоступна. Выберите другую.</string>
+    <string name="err_image_unsupported">Сервер не может прочитать это изображение</string>
+    <string name="err_image_unreadable">Не удалось прочитать изображение. Выберите его снова.</string>
+    <string name="err_mic_permission">Разрешите доступ к микрофону, чтобы диктовать</string>
+    <string name="err_nothing_heard">Ничего не слышно</string>
+    <string name="err_speech">Ошибка распознавания речи</string>
+    <string name="err_speech_network">Для этого языка распознаванию нужна сеть</string>
+    <string name="err_speech_busy">Распознавание занято. Попробуйте ещё раз.</string>
+    <string name="err_speech_unavailable">На этом телефоне нет распознавания речи</string>
+    <string name="err_no_camera">Нет приложения камеры</string>
+    <string name="err_rename">Не удалось переименовать. Проверьте подключение.</string>
+    <string name="err_unlink">Не удалось отвязать устройство. Проверьте подключение.</string>
+    <string name="limit_rate_title">Не так быстро</string>
+    <string name="limit_rate_body">Слишком много запросов подряд.</string>
+    <string name="limit_daily_title">Дневной лимит исчерпан</string>
+    <string name="limit_daily_body">Сообщения на сегодня закончились.</string>
+    <string name="limit_quota_title">Нет кредитов</string>
+    <string name="limit_quota_body">У провайдера модели закончились кредиты.</string>
+    <string name="limit_busy_title">Провайдер занят</string>
+    <string name="limit_busy_body">Модель сейчас ограничивает запросы.</string>
+    <string name="limit_retry_in">Попробуйте через %1$s</string>
+    <string name="limit_retry_later">Попробуйте позже</string>
+    <string name="duration_s">%1$d с</string>
+    <string name="duration_min">%1$d мин</string>
+    <string name="duration_h">%1$d ч</string>
+
+    <!-- Settings -->
+    <string name="settings_account">Аккаунт</string>
+    <string name="settings_name_hint">Ваше имя · нажмите, чтобы изменить</string>
+    <string name="settings_your_name">Ваше имя</string>
+    <string name="settings_assistant">Ассистент</string>
+    <string name="settings_model">Модель</string>
+    <string name="settings_model_note">Модель, глубина размышлений, поиск в интернете и рисунки общие с часами. Кольца показывают остаток бюджета провайдера.</string>
+    <string name="settings_effort">Глубина размышлений</string>
+    <string name="settings_web_search">Поиск в интернете</string>
+    <string name="settings_web_search_desc">Новости, погода, цены и другие свежие факты</string>
+    <string name="settings_figures">Рисунки</string>
+    <string name="settings_figures_desc">Графики, диаграммы и схемы в ответах</string>
+    <string name="settings_off_on_server">Выключено на сервере</string>
+    <string name="settings_shared_note">Эти настройки общие с часами.</string>
+    <string name="settings_devices">Устройства</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_server_version">%1$s · версия %2$s</string>
+    <string name="effort_default">По умолчанию</string>
+    <string name="effort_fixed">Не настраивается для этой модели</string>
+    <string name="effort_none">Нет</string>
+    <string name="effort_minimal">Минимальная</string>
+    <string name="effort_low">Низкая</string>
+    <string name="effort_medium">Средняя</string>
+    <string name="effort_high">Высокая</string>
+    <string name="effort_xhigh">Очень высокая</string>
+    <string name="effort_max">Максимальная</string>
+    <string name="usage_left">Осталось %1$d%%</string>
+    <string name="sign_out">Выйти</string>
+    <string name="sign_out_q">Выйти из FullSkat?</string>
+    <string name="sign_out_desc">Телефон забудет диалоги и будет отвязан от аккаунта. Часы и другие устройства останутся подключены.</string>
+
+    <!-- Link a watch -->
+    <string name="link_watch">Подключить часы</string>
+    <string name="link_watch_desc">Введите код с экрана часов</string>
+    <string name="link_instructions">Откройте FullSkat на часах. Там будет код из шести символов — введите его здесь.</string>
+    <string name="link_code_label">Код подключения</string>
+    <string name="link_code_changes">Код меняется каждые 30 секунд. Буквы и цифры, без O, 0, I и 1.</string>
+    <string name="link_button">Подключить</string>
+    <string name="link_claiming">Подключение…</string>
+    <string name="link_wrong">Неверный или устаревший код. Проверьте часы и попробуйте ещё раз.</string>
+    <string name="link_locked">Слишком много попыток. Попробуйте через %1$s.</string>
+    <string name="link_failed">Не удалось подключить: %1$s</string>
+    <string name="link_done_title">Подключено</string>
+    <string name="link_done_body">Часы теперь работают с вашим аккаунтом: на них ваши диалоги и настройки.</string>
+    <string name="link_another">Подключить ещё устройство</string>
+
+    <!-- Devices -->
+    <string name="devices">Устройства</string>
+    <string name="devices_desc">Телефоны и часы, подключённые к аккаунту</string>
+    <string name="device_this">Этот телефон</string>
+    <string name="device_watch">Часы</string>
+    <string name="device_phone">Телефон</string>
+    <string name="device_other">Устройство</string>
+    <string name="device_unnamed">Устройство без имени</string>
+    <string name="device_last_seen">в сети %1$s</string>
+    <string name="unlink">Отвязать</string>
+    <string name="unlink_q">Отвязать «%1$s»?</string>
+    <string name="unlink_desc">Устройство выйдет из аккаунта и вернётся к экрану настройки. Подключить его снова можно новым кодом.</string>
+</resources>
