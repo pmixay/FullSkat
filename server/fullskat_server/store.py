@@ -326,11 +326,11 @@ class Store:
         """Status of a link (None: unknown or expired); counts as a poll, so it keeps the link alive."""
         now = self.now()
         t = now / 1000
-        with self.db.tx() as con:
-            self._purge_links(con, now)
+        with self.db.read() as con:  # unknown ids (no auth on this endpoint) cost one read, no write
             link = self._one(con, "SELECT * FROM links WHERE id = ?", link_key)
-            if link is None:
-                return None
+        if link is None or link["polled_at"] < now - linking.LINK_TTL * 1000:
+            return None  # an expired row goes with the next purge
+        with self.db.tx() as con:
             con.execute("UPDATE links SET polled_at = ? WHERE id = ?", (now, link_key))
             if link["claimed_by"] is not None:
                 return LinkState(claimed=True, t=t)

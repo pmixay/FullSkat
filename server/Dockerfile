@@ -13,7 +13,7 @@ RUN useradd --create-home --uid 1000 fullskat \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY fullskat_server ./fullskat_server
-RUN pip install .
+RUN pip install ".[heic]"
 
 USER fullskat
 VOLUME ["/data"]

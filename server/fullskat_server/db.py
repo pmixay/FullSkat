@@ -137,10 +137,11 @@ class Database:
             yield self._con
 
     def close(self) -> None:
+        """Finish the queued work, then close the connection. Not under the lock: queued jobs need it."""
+        executor, self._executor = self._executor, None
+        if executor is not None:
+            executor.shutdown(wait=True)
         with self._lock:
-            if self._executor is not None:
-                self._executor.shutdown(wait=True)
-                self._executor = None
             try:
                 self._con.close()
             except sqlite3.Error:

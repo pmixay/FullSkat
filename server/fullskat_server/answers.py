@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from contextlib import suppress
+from contextlib import aclosing, suppress
 from typing import Any, AsyncIterator
 
 from .events import EventHub
@@ -184,11 +184,13 @@ class Answer:
         flusher = asyncio.create_task(self._flush_periodically())
         try:
             if not self._stop_reason:
-                async for item in self._llm.stream(self._messages, self.model, **self._options):
-                    event = self.builder.feed(item)
-                    if event is not None:
-                        self._emit(*event)
-                        self._dirty = True
+                # aclosing: a stopped answer closes the provider stream (and its HTTP response) right away
+                async with aclosing(self._llm.stream(self._messages, self.model, **self._options)) as stream:
+                    async for item in stream:
+                        event = self.builder.feed(item)
+                        if event is not None:
+                            self._emit(*event)
+                            self._dirty = True
         except asyncio.CancelledError:
             current = asyncio.current_task()
             if not self._stop_reason:  # cancelled from outside (the event loop is closing): nothing can be saved
@@ -241,9 +243,12 @@ class Answer:
         self.finished = True
         if error is not None:
             self._emit("error", error_payload(error))
-        else:
-            self._emit("done", {**builder.done_payload(self.model), "message": message,
-                                "seq": seq if seq is not None else (message or {}).get("seq")})
+            return
+        payload = builder.done_payload(self.model)
+        if message is not None and message["deleted"]:  # deleted while it streamed: nothing to show
+            payload.update(text="", thinking="", sources=[])
+        self._emit("done", {**payload, "message": message,
+                            "seq": seq if seq is not None else (message or {}).get("seq")})
 
 
 def replay(message: dict[str, Any]) -> list[Event]:
