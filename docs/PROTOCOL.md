@@ -86,7 +86,7 @@ token was revoked (state file reset).
   `WEB_SEARCH` is on: that setting is a master switch, so the client can turn search off but
   never on when the operator disabled it.
 * The model may search the web (`WEB_SEARCH`, default on); the search itself is
-  transparent to the client.
+  transparent to the client, which only gets the pages it used (`sources` in `done`).
 * The server prepends its own system prompt (short plain-text answers by default, in the
   language of the user; Markdown, LaTeX in `$...$` / `$$...$$` and fenced code blocks only when
   they really help, because the watch renders them; watch context).
@@ -98,7 +98,13 @@ token was revoked (state file reset).
   * `event: delta`  `data: {"text": "partial piece"}` (many)
   * `event: done`   `data: {"text": "<full answer>", "model": "...",
     "usage": {"prompt_tokens": n, "completion_tokens": n},
-    "thinking": "<full thinking text, empty string if none>"}`
+    "thinking": "<full thinking text, empty string if none>",
+    "sources": [{"url": "https://...", "title": "..."}]}`
+    * `sources`: the web pages the answer drew on when the model searched the web, empty list when it
+      did not search or the provider reports none. At most 8, deduplicated, in order of first use: the
+      pages the answer cites, or, if it cites none, the pages the search consulted. `url` is always an
+      `http(s)` URL (fragments and `utm_*` parameters removed); `title` may be an empty string. Claude,
+      OpenRouter and OpenAI report sources; Kimi's `$web_search` does not. Older clients ignore the field.
   * `event: error`  `data: {"error": "<code>", "message": "...", "retry_after": 90}` (`retry_after`
     seconds, only when known). Codes: `upstream_rate_limited` (provider pause), `upstream_quota`
     (provider credits spent), `upstream_auth` (provider rejected the server's key), `upstream_error`,

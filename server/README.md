@@ -112,7 +112,8 @@ working provider. Models are routed to the provider that lists them.
   supplies supported reasoning levels, or set `OPENAI_MODEL_EFFORTS` for a gateway without metadata.
   Responses text, refusal text, reasoning summaries and token usage are translated to the existing
   watch SSE events. Failed, incomplete or disconnected responses produce an error, never a successful
-  truncated answer. `WEB_SEARCH` controls the built-in `web_search` tool; this backend does not accept
+  truncated answer. `WEB_SEARCH` controls the built-in `web_search` tool (sent with
+  `include: ["web_search_call.action.sources"]`, which Codex LB allows); this backend does not accept
   `max_tool_calls`, so `WEB_SEARCH_MAX_USES` does not cap OpenAI searches. `SHOW_THINKING=false` omits
   summaries and suppresses them even if a gateway sends one. The usage ring uses the tightest
   unfiltered quota in Codex LB's `/v1/usage`; gateways without it have no ring.
@@ -174,7 +175,17 @@ OpenRouter and Kimi the reasoning deltas are forwarded when the model returns th
 (news, weather, prices, scores). With the Claude API this is the `web_search` server tool, at
 most `WEB_SEARCH_MAX_USES` searches per answer (default 3); it has to be enabled for your
 organization in the Claude Console, and each search is billed on top of tokens. With
-OpenRouter the `web` plugin is used; with Kimi its `$web_search` tool. Set `WEB_SEARCH=false` to turn it off.
+OpenRouter it is the `openrouter:web_search` server tool (the model decides whether to search; the
+older `web` plugin, which searched on every request, is deprecated), at most `WEB_SEARCH_MAX_USES`
+searches where OpenRouter can enforce it (its own engines and Claude's native search; OpenAI's native
+search ignores the cap). With the OpenAI Responses API it is the built-in `web_search` tool; with Kimi
+its `$web_search` tool. Set `WEB_SEARCH=false` to turn it off.
+
+The pages an answer drew on are sent to the watch as `sources` in the `done` event (at most 8, see
+`docs/PROTOCOL.md`) and shown under the answer: Claude's citations (or its search results when it
+cited none), OpenRouter's `url_citation` annotations, and OpenAI's `url_citation` annotations (or the
+pages its search consulted, requested with `include: ["web_search_call.action.sources"]`). Kimi's
+`$web_search` reports no pages. The extraction lives in `fullskat_server/sources.py`.
 
 `WEB_SEARCH` is a master switch: the watch can send `"web_search": false` to turn search off for
 a request, but can never turn it on when the operator disabled it. Likewise the watch may send

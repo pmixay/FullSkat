@@ -272,6 +272,7 @@ async def test_chat_streams_deltas_and_done(client: AsyncClient, app: FastAPI) -
         "model": "claude-haiku-5-5",
         "usage": {"prompt_tokens": 10, "completion_tokens": 3},
         "thinking": "Greeting the user.",
+        "sources": [],
     }
 
     (messages, model), = app.state.llm.requests
@@ -377,3 +378,21 @@ async def test_chat_rate_limit(tmp_path: Path) -> None:
         assert limited.status_code == 429
         assert limited.json()["error"] == "rate_limited"
         assert "retry-after" in limited.headers
+
+
+async def test_chat_done_carries_merged_sources(client: AsyncClient, app: FastAPI) -> None:
+    from fullskat_server.sources import Source, Sources
+
+    first = Sources((Source("https://a.example/", "A"),))
+    second = Sources((Source("https://a.example", "A again"), Source("https://b.example/x", "")))
+    app.state.llm = FakeLLM(deltas=["Hi", first, second])  # type: ignore[list-item]
+    token = await pair(client)
+    body = {"messages": [{"role": "user", "content": "news?"}]}
+    response = await client.post("/v1/chat", json=body, headers={"Authorization": f"Bearer {token}"})
+    events = parse_sse(response.text)
+    assert [name for name, _ in events] == ["delta", "done"]  # sources travel only in done
+    assert events[-1][1]["text"] == "Hi"
+    assert events[-1][1]["sources"] == [
+        {"url": "https://a.example/", "title": "A"},
+        {"url": "https://b.example/x", "title": ""},
+    ]

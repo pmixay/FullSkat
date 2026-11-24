@@ -19,6 +19,7 @@ from .config import Settings, load_settings
 from .llm import LLMError, Thinking, Usage, create_llm, trim_history
 from .prompts import build_system_prompt
 from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
+from .sources import Sources
 
 log = logging.getLogger(__name__)
 
@@ -262,12 +263,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             parts: list[str] = []
             thinking_parts: list[str] = []
             usage = Usage(prompt_tokens=0, completion_tokens=0)
+            sources = Sources()
             try:
                 async for item in app.state.llm.stream(
                     messages, model, effort=body.effort, web_search=body.web_search
                 ):
                     if isinstance(item, Usage):
                         usage = item
+                        continue
+                    if isinstance(item, Sources):
+                        sources = sources.merge(item)
                         continue
                     if isinstance(item, Thinking):
                         thinking_parts.append(item.text)
@@ -290,6 +295,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model": model,
                 "usage": usage.to_json(),
                 "thinking": "".join(thinking_parts),
+                "sources": sources.to_json(),
             }
             yield _sse("done", done)
 

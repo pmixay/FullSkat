@@ -15,6 +15,7 @@ import httpx
 
 from .config import Settings
 from .efforts import ModelEfforts, normalize_efforts, pick_default, resolve_effort
+from .sources import SourceCollector
 
 log = logging.getLogger(__name__)
 
@@ -249,6 +250,7 @@ class _ChatCompletionsLLM:
         """
         result = _Round()
         tool_calls: dict[int, dict[str, Any]] = {}
+        sources = SourceCollector()
         try:
             async with self._client.stream("POST", self._url(), headers=self._headers(), json=body) as response:
                 if response.status_code >= 400:
@@ -283,6 +285,7 @@ class _ChatCompletionsLLM:
                     choices = chunk.get("choices") or []
                     if choices:
                         choice = choices[0]
+                        sources.add_chat_choice(choice)
                         delta = choice.get("delta") or {}
                         for item in parse_openrouter_delta(delta):
                             if isinstance(item, Thinking):
@@ -302,6 +305,8 @@ class _ChatCompletionsLLM:
             log.warning("%s request failed: %s", self.label, exc)
             raise LLMError("upstream_error", f"could not reach the model provider: {exc}") from exc
         result.tool_calls = [tool_calls[i] for i in sorted(tool_calls)]
+        if sources:
+            yield sources.result()
         yield result
 
     def _body(
@@ -417,7 +422,11 @@ class OpenRouterLLM(_ChatCompletionsLLM):
         if reasoning:
             body["reasoning"] = reasoning
         if _web_search_enabled(self._settings, web_search):
-            body["plugins"] = [{"id": "web", "max_results": self._settings.web_search_max_uses}]
+            # The `web` plugin (searches once on every request) is deprecated; with the server tool the model
+            # decides whether to search, at most WEB_SEARCH_MAX_USES times (enforced by OpenRouter's own engines).
+            body["tools"] = [
+                {"type": "openrouter:web_search", "parameters": {"max_uses": self._settings.web_search_max_uses}}
+            ]
         return body
 
     async def usage(self) -> UsageLeft | None:
@@ -526,6 +535,7 @@ class OpenAILLM(_ChatCompletionsLLM):
             body["reasoning"] = reasoning
         if _web_search_enabled(self._settings, web_search):
             body["tools"] = [{"type": "web_search"}]
+            body["include"] = ["web_search_call.action.sources"]  # pages consulted, for the watch's source list
         return body
 
     async def stream(
@@ -542,7 +552,9 @@ class OpenAILLM(_ChatCompletionsLLM):
                     message = extract_upstream_message(await response.aread())
                     raise LLMError(error_code_for_status(response.status_code, message), message,
                                    parse_retry_after(response.headers.get("retry-after")))
+                sources = SourceCollector()
                 async for event in _response_events(response):
+                    sources.add_responses_event(event)
                     kind = event.get("type")
                     if kind in ("response.output_text.delta", "response.refusal.delta"):
                         if event.get("delta"):
@@ -551,6 +563,8 @@ class OpenAILLM(_ChatCompletionsLLM):
                         if self._settings.show_thinking and event.get("delta"):
                             yield Thinking(str(event["delta"]))
                     elif kind == "response.completed":
+                        if sources:
+                            yield sources.result()
                         usage = (event.get("response") or {}).get("usage") or {}
                         yield Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
                         return
@@ -849,6 +863,7 @@ class AnthropicLLM:
             raise LLMError("upstream_error", "no user message to answer")
         request = self._request(system, conversation, model, effort, web_search)
         prompt_tokens = completion_tokens = 0
+        sources = SourceCollector()
         try:
             for _ in range(MAX_PAUSE_TURNS):
                 async with self._client.messages.stream(**request) as stream:
@@ -861,6 +876,7 @@ class AnthropicLLM:
                         elif delta.type == "text_delta" and delta.text:
                             yield delta.text
                     final = await stream.get_final_message()
+                sources.add_anthropic_content(final.content)
                 usage = final.usage
                 prompt_tokens += (
                     usage.input_tokens
@@ -882,6 +898,8 @@ class AnthropicLLM:
         except anthropic.APIConnectionError as exc:
             log.warning("Anthropic request failed: %s", exc)
             raise LLMError("upstream_error", f"could not reach the model provider: {exc}") from exc
+        if sources:
+            yield sources.result()
         yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
