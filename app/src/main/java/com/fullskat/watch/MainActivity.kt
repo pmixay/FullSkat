@@ -27,6 +27,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Live updates from the phone only while the app is on screen: nothing runs in the background.
+    override fun onStart() {
+        super.onStart()
+        FullSkatApp.container(this).core.events.start()
+    }
+
+    override fun onStop() {
+        FullSkatApp.container(this).core.events.stop()
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

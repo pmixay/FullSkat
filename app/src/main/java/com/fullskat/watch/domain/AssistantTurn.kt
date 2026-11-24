@@ -7,15 +7,10 @@ import android.util.Log
 import com.fullskat.watch.audio.AudioCapture
 import com.fullskat.watch.audio.EndpointDetector
 import com.fullskat.watch.audio.untilEndpoint
-import com.fullskat.watch.data.db.DialogDao
-import com.fullskat.watch.data.db.DialogEntity
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
-import com.fullskat.watch.data.net.ApiClient
-import com.fullskat.watch.data.net.ApiException
-import com.fullskat.watch.data.net.ChatEvent
-import com.fullskat.watch.data.net.ChatMessage
-import com.fullskat.core.net.WebSources
+import com.fullskat.core.FullSkatCore
+import com.fullskat.core.chat.ChatOptions
+import com.fullskat.core.chat.ChatProgress
+import com.fullskat.core.net.ApiException
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.speech.ListenEvent
 import com.fullskat.watch.speech.LocalSpeech
@@ -34,7 +29,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Locale
-import java.util.UUID
 
 enum class ErrorKind {
     NO_CONNECTION,
@@ -76,9 +70,8 @@ sealed interface TurnState {
  */
 class AssistantTurn(
     private val context: Context,
-    private val dao: DialogDao,
+    private val core: FullSkatCore,
     private val settings: SettingsRepository,
-    private val api: ApiClient,
     private val speech: LocalSpeech,
     private val audio: AudioCapture,
 ) {
@@ -90,12 +83,8 @@ class AssistantTurn(
     /** Stop signal of the turn currently listening; replay = 1 so an early stop is not lost. */
     @Volatile private var stopSignal: MutableSharedFlow<Unit>? = null
 
-    suspend fun createDialog(): String {
-        val id = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
-        dao.insertDialog(DialogEntity(id, "", now, now))
-        return id
-    }
+    /** A new empty dialog (local until its first question reaches the server). */
+    suspend fun createDialog(): String = core.sync.newDialog()
 
     fun start(scope: CoroutineScope, dialogId: String) {
         job?.cancel()
@@ -119,8 +108,7 @@ class AssistantTurn(
 
     private suspend fun runTurn(dialogId: String) {
         val cfg = settings.current()
-        val token = cfg.token
-        if (!cfg.paired || token == null) {
+        if (!cfg.paired) {
             _state.value = TurnState.Failed(ErrorKind.UNAUTHORIZED, null)
             return
         }
@@ -140,16 +128,8 @@ class AssistantTurn(
             return
         }
         haptic(cfg.haptics, 20)
-        val now = System.currentTimeMillis()
-        dao.insertMessage(MessageEntity(dialogId = dialogId, role = Role.USER, content = transcript, createdAt = now))
-        val dialog = dao.getDialog(dialogId)
-        if (dialog != null && dialog.title.isBlank()) {
-            dao.updateDialog(dialogId, transcript.take(60), now)
-        } else {
-            dao.touchDialog(dialogId, now)
-        }
         _state.value = TurnState.Thinking
-        answer(dialogId, cfg.serverUrl, token, cfg.model, cfg.effectiveEffort, cfg.webSearch, cfg.figures)
+        answer(dialogId, transcript)
         FullSkatTileService.requestUpdate(context)
     }
 
@@ -189,68 +169,29 @@ class AssistantTurn(
         finalText.orEmpty().trim()
     }
 
-    private suspend fun answer(dialogId: String, serverUrl: String, token: String, model: String?, effort: String?, webSearch: Boolean, figures: Boolean) {
-        val history = dao.messages(dialogId)
-            .filter { !it.pending || it.content.isNotBlank() }
-            .map { ChatMessage(if (it.role == Role.USER) "user" else "assistant", it.content) }
-        val msgId = dao.insertMessage(
-            MessageEntity(dialogId = dialogId, role = Role.ASSISTANT, content = "", createdAt = System.currentTimeMillis(), pending = true)
-        )
-        val sb = StringBuilder()
-        val tb = StringBuilder() // the model's reasoning summary
-        var lastWrite = 0L
-        suspend fun persistThrottled() {
-            val t = System.currentTimeMillis()
-            if (t - lastWrite > 300) {
-                lastWrite = t
-                dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = true)
-            }
-        }
+    /**
+     * Sends the question and follows the answer. The question and the growing answer are saved in the synced copy
+     * (so the phone sees them too); the screen shows the live text from [TurnState.Answering]. The model, effort,
+     * web search and drawings come from the account's shared preferences on the server.
+     */
+    private suspend fun answer(dialogId: String, question: String) {
         try {
-            api.chat(serverUrl, token, dialogId, history, model, Locale.getDefault().toLanguageTag(), effort, webSearch, figures).collect { ev ->
-                when (ev) {
-                    is ChatEvent.Thinking -> {
-                        tb.append(ev.text)
-                        _state.value = TurnState.Answering(sb.toString(), tb.toString())
-                        persistThrottled()
-                    }
-                    is ChatEvent.Delta -> {
-                        sb.append(ev.text)
-                        _state.value = TurnState.Answering(sb.toString(), tb.toString())
-                        persistThrottled()
-                    }
-                    is ChatEvent.Done -> {
-                        val text = ev.text.ifBlank { sb.toString() }
-                        if (ev.sources.isNotEmpty()) dao.updateMessageSources(msgId, WebSources.encode(ev.sources))
-                        dao.updateMessageContent(msgId, text, ev.thinking.ifBlank { tb.toString() }, pending = false)
-                        dao.touchDialog(dialogId, System.currentTimeMillis())
-                        _state.value = TurnState.Idle
-                    }
-                    is ChatEvent.Error -> throw ApiException.Server(502, ev.message.ifBlank { ev.code }, ev.code, ev.retryAfterSec)
+            core.chat.send(dialogId, question, locale = Locale.getDefault().toLanguageTag(), options = ChatOptions()).collect { p ->
+                when (p) {
+                    is ChatProgress.Started -> Unit
+                    is ChatProgress.Answering -> _state.value = TurnState.Answering(p.text, p.thinking)
+                    is ChatProgress.Done -> _state.value = TurnState.Idle
                 }
             }
-            if (_state.value is TurnState.Answering) {
-                // Stream ended without a done event; keep what we have.
-                dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = false)
-                _state.value = TurnState.Idle
-            }
+            if (_state.value is TurnState.Answering || _state.value is TurnState.Thinking) _state.value = TurnState.Idle
         } catch (e: ApiException) {
-            finalizePartial(msgId, sb, tb)
             val kind = e.kind()
             _state.value = TurnState.Failed(kind, e.message, e.retryAfterSec())
             // The provider list changes while the server runs; relearn it so the next try uses a working model.
             if (kind == ErrorKind.MODEL_UNAVAILABLE || kind == ErrorKind.NO_PROVIDER || kind == ErrorKind.PROVIDER_AUTH) {
-                refreshServerModels(serverUrl, token)
+                core.account.refresh()
             }
-        } catch (e: CancellationException) {
-            // User tapped Stop: keep whatever streamed so far as the answer.
-            withContext(NonCancellable) { finalizePartial(msgId, sb, tb) }
-            throw e
         }
-    }
-
-    private suspend fun finalizePartial(msgId: Long, sb: StringBuilder, tb: StringBuilder) {
-        if (sb.isEmpty()) dao.deleteMessage(msgId) else dao.updateMessageContent(msgId, sb.toString(), tb.toString(), pending = false)
     }
 
     private fun haptic(enabled: Boolean, ms: Long) {
@@ -261,19 +202,10 @@ class AssistantTurn(
         }
     }
 
-    private suspend fun refreshServerModels(serverUrl: String, token: String) {
-        try {
-            val me = api.me(serverUrl, token)
-            settings.saveServerModels(me.model, me.models, me.effort, me.modelEfforts, me.providers)
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            // Offline or revoked: the cached list stays and the next turn reports the real problem.
-        }
-    }
-
     private fun ApiException.kind(): ErrorKind = when (this) {
         is ApiException.Network -> ErrorKind.NO_CONNECTION
         is ApiException.Unauthorized, is ApiException.WrongPasscode -> ErrorKind.UNAUTHORIZED
+        is ApiException.NotFound -> ErrorKind.SERVER
         is ApiException.Locked -> ErrorKind.RATE_LIMITED
         is ApiException.RateLimited -> if (code == "daily_limit") ErrorKind.DAILY_LIMIT else ErrorKind.RATE_LIMITED
         is ApiException.Server -> when (code) {

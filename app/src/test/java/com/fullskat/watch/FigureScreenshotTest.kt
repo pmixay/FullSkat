@@ -17,14 +17,15 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
-import com.fullskat.watch.data.db.DialogEntity
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
+import com.fullskat.core.db.DialogEntity
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.Roles
+import com.fullskat.core.net.MessageStatus
 import com.fullskat.core.richtext.figure.Figure
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.core.ui.rich.FigureBlock
-import com.fullskat.watch.ui.rich.FigureScreen
+import com.fullskat.watch.ui.figure.FigureScreen
 import com.fullskat.watch.ui.theme.FullSkatTheme
 import com.fullskat.watch.ui.theme.Tokens
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -78,12 +79,12 @@ class FigureScreenshotTest {
         val container = FullSkatApp.container(ApplicationProvider.getApplicationContext())
         val id = "fig-$name"
         runBlocking {
-            val dao = container.db.dialogDao()
+            val dao = container.core.db.dao()
             val t0 = System.currentTimeMillis() - 600_000
-            dao.insertDialog(DialogEntity(id, question.take(60), t0, t0))
-            dao.insertMessage(MessageEntity(dialogId = id, role = Role.USER, content = question, createdAt = t0))
+            dao.upsertDialog(DialogEntity(id, question.take(60), t0, t0))
+            dao.upsertMessage(MessageEntity(id = java.util.UUID.randomUUID().toString(), dialogId = id, role = Roles.USER, content = question, createdAt = t0))
             val answer = listOf(before, fence(json), after).filter { it.isNotBlank() }.joinToString("\n\n")
-            dao.insertMessage(MessageEntity(dialogId = id, role = Role.ASSISTANT, content = answer, createdAt = t0 + 1000))
+            dao.upsertMessage(MessageEntity(id = java.util.UUID.randomUUID().toString(), dialogId = id, role = Roles.ASSISTANT, content = answer, createdAt = t0 + 1000))
         }
         compose.setContent { FullSkatTheme { AppScaffold { ChatScreen(AppViewModel(container), id, autoListen = false) } } }
         compose.waitForIdle()

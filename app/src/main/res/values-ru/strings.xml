@@ -21,12 +21,6 @@
     <string name="settings">Настройки</string>
     <string name="delete_dialog_q">Удалить этот диалог?</string>
     <string name="untitled">Без названия</string>
-    <string name="pair_passcode">Код доступа</string>
-    <string name="pair_connect">Подключить</string>
-    <string name="pair_set_first">Первые часы: этот код теперь код сервера.</string>
-    <string name="pair_wrong">Неверный код</string>
-    <string name="pair_locked">Слишком много попыток. Попробуйте позже.</string>
-    <string name="pair_unreachable">Сервер недоступен</string>
     <string name="back">Назад</string>
     <string name="done">Готово</string>
 
@@ -34,9 +28,6 @@
     <string name="settings_haptics">Вибрация</string>
     <string name="settings_assistant">Сделать ассистентом</string>
     <string name="settings_assistant_desc">Откроет системные настройки. Выберите FullSkat как приложение цифрового ассистента.</string>
-    <string name="settings_server">Сервер</string>
-    <string name="settings_unpair">Отключить</string>
-    <string name="settings_unpair_q">Отключиться от сервера? Диалоги останутся на часах.</string>
     <string name="settings_version">Версия %1$s</string>
 
     <string name="err_no_mic">Нужно разрешение на микрофон</string>
@@ -81,4 +72,12 @@
     <string name="opened_on_phone">Открыто на телефоне</string>
     <string name="phone_not_connected">Телефон не подключён</string>
     <string name="link_failed">Не удалось открыть</string>
+    <string name="link_title">Привяжите к телефону</string>
+    <string name="link_hint">На телефоне: FullSkat → Привязать часы, введите этот код</string>
+    <string name="link_offline">Нет связи. Пробую снова…</string>
+    <string name="link_done">Привязано</string>
+    <string name="settings_account">Аккаунт</string>
+    <string name="settings_unlink">Отвязать часы</string>
+    <string name="settings_unlink_q">Отвязать эти часы? Диалоги останутся на телефоне и сервере.</string>
+    <string name="not_sent">Не отправлено</string>
 </resources>

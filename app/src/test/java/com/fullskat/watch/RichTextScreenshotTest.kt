@@ -12,9 +12,10 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
-import com.fullskat.watch.data.db.DialogEntity
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
+import com.fullskat.core.db.DialogEntity
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.Roles
+import com.fullskat.core.net.MessageStatus
 import com.fullskat.watch.richtext.MathExamples
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.chat.ChatScreen
@@ -146,11 +147,11 @@ class RichTextScreenshotTest {
     private fun chat(name: String, answer: String) {
         val container = FullSkatApp.container(ApplicationProvider.getApplicationContext())
         val id = runBlocking {
-            val dao = container.db.dialogDao()
+            val dao = container.core.db.dao()
             val now = System.currentTimeMillis()
-            dao.insertDialog(DialogEntity("rich", "Вопрос", now, now))
-            dao.insertMessage(MessageEntity(dialogId = "rich", role = Role.USER, content = "Объясни коротко", createdAt = now))
-            dao.insertMessage(MessageEntity(dialogId = "rich", role = Role.ASSISTANT, content = answer, createdAt = now + 1))
+            dao.upsertDialog(DialogEntity("rich", "Вопрос", now, now))
+            dao.upsertMessage(MessageEntity(id = java.util.UUID.randomUUID().toString(), dialogId = "rich", role = Roles.USER, content = "Объясни коротко", createdAt = now))
+            dao.upsertMessage(MessageEntity(id = java.util.UUID.randomUUID().toString(), dialogId = "rich", role = Roles.ASSISTANT, content = answer, createdAt = now + 1))
             "rich"
         }
         compose.setContent { FullSkatTheme { AppScaffold { ChatScreen(AppViewModel(container), id, autoListen = false) } } }

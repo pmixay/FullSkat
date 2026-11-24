@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -67,9 +68,9 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.fullskat.watch.R
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
-import com.fullskat.core.net.WebSources
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.MessageStatus
+import com.fullskat.core.ui.rich.AttachmentImage
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
@@ -249,7 +250,7 @@ private fun BottomHalfButton(onClick: () -> Unit, container: Color, content: @Co
 
 @Composable
 private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
-    val isUser = m.role == Role.USER
+    val isUser = m.isUser
     val shape = if (isUser) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
     val showThinking = !isUser && thinking.isNotBlank()
     // While the model is still reasoning there is no answer yet: the thinking header replaces the "…" placeholder.
@@ -259,8 +260,19 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         if (showThinking) ThinkingBlock(thinking = thinking, live = m.pending && text.isBlank())
+        if (isUser) {
+            // images attached on the phone: small thumbnails above the question
+            val images = remember(m.attachments) { m.attachmentList }
+            if (images.isNotEmpty()) {
+                Row(Modifier.padding(bottom = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    for (ref in images.take(4)) {
+                        AttachmentImage(ref, thumb = true, modifier = Modifier.size(if (images.size == 1) 92.dp else 44.dp).clip(RoundedCornerShape(10.dp)))
+                    }
+                }
+            }
+        }
         if (showBubble) {
-            if (isUser || text.isBlank()) {
+            if ((isUser || text.isBlank()) && !(isUser && text.isBlank())) {
                 Text(
                     text = text.ifBlank { "…" },
                     color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
@@ -286,8 +298,11 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
                 )
             }
         }
+        if (isUser && m.status == MessageStatus.ERROR) {
+            Text(stringResource(R.string.not_sent), color = Tokens.error, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
+        }
         if (!isUser && !m.pending) {
-            val sources = remember(m.sources) { WebSources.decode(m.sources) }
+            val sources = remember(m.sources) { m.sourceList }
             if (sources.isNotEmpty()) SourcesBlock(sources)
         }
     }

@@ -37,7 +37,7 @@ class FullSkatTileService : TileService() {
         val mic = micImage(requestParams.scope)
         return CallbackToFutureAdapter.getFuture { completer ->
             scope.launch {
-                val dao = FullSkatApp.container(this@FullSkatTileService).db.dialogDao()
+                val dao = FullSkatApp.container(this@FullSkatTileService).core.db.dao()
                 val last = runCatching { dao.lastUserMessage() }.getOrNull()
                 val today = runCatching { dao.countDialogsSince(startOfToday()) }.getOrDefault(0)
                 completer.set(buildTile(mic, last, today))

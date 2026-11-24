@@ -37,7 +37,7 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.BuildConfig
 import com.fullskat.watch.R
 import com.fullskat.watch.assistant.FullSkatVoiceInteractionService
-import com.fullskat.watch.data.net.ServerEndpoint
+import com.fullskat.core.ServerEndpoint
 import com.fullskat.watch.data.prefs.Settings
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.UsageRing
@@ -47,7 +47,7 @@ private val itemModifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, v
 private val indentedModifier = Modifier.fillMaxWidth().padding(start = 26.dp, end = 12.dp, top = 2.dp, bottom = 2.dp)
 
 @Composable
-fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, onRepair: () -> Unit, onUnpaired: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, onUnlinked: () -> Unit) {
     val context = LocalContext.current
     val settings by vm.settings.collectAsStateWithLifecycle()
     val cfg = settings ?: return
@@ -117,10 +117,10 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, 
             }
             item {
                 FilledTonalButton(
-                    onClick = onRepair,
+                    onClick = {},
                     modifier = itemModifier,
-                    label = { Text(stringResource(R.string.settings_server)) },
-                    secondaryLabel = { Text(ServerEndpoint.URL.removePrefix("https://"), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    label = { Text(stringResource(R.string.settings_account)) },
+                    secondaryLabel = { Text(listOfNotNull(cfg.userName, cfg.serverName ?: ServerEndpoint.URL.removePrefix("https://")).joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {
@@ -128,7 +128,7 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, 
                     onClick = { confirmUnpair = true },
                     modifier = itemModifier,
                     colors = ButtonDefaults.buttonColors(containerColor = Tokens.surfaceHigh, contentColor = Tokens.error),
-                    label = { Text(stringResource(R.string.settings_unpair)) },
+                    label = { Text(stringResource(R.string.settings_unlink)) },
                 )
             }
             item {
@@ -145,12 +145,12 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, 
     AlertDialog(
         visible = confirmUnpair,
         onDismissRequest = { confirmUnpair = false },
-        title = { Text(stringResource(R.string.settings_unpair_q)) },
+        title = { Text(stringResource(R.string.settings_unlink_q)) },
         confirmButton = {
             AlertDialogDefaults.ConfirmButton(onClick = {
                 confirmUnpair = false
-                vm.unpair()
-                onUnpaired()
+                vm.unlink()
+                onUnlinked()
             })
         },
         dismissButton = { AlertDialogDefaults.DismissButton(onClick = { confirmUnpair = false }) },
