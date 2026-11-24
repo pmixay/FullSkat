@@ -9,6 +9,7 @@ composeBom = "2026.08.00"
 wearCompose = "1.6.2"
 wearTooling = "1.0.0"
 wearInput = "1.2.0"
+wearRemoteInteractions = "1.2.0"
 tiles = "1.6.2"
 protolayout = "1.4.2"
 complications = "1.3.0"
@@ -39,6 +40,7 @@ wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-fou
 wear-compose-navigation = { group = "androidx.wear.compose", name = "compose-navigation", version.ref = "wearCompose" }
 wear-tooling-preview = { group = "androidx.wear", name = "wear-tooling-preview", version.ref = "wearTooling" }
 wear-input = { group = "androidx.wear", name = "wear-input", version.ref = "wearInput" }
+wear-remote-interactions = { group = "androidx.wear", name = "wear-remote-interactions", version.ref = "wearRemoteInteractions" }
 wear-tiles = { group = "androidx.wear.tiles", name = "tiles", version.ref = "tiles" }
 wear-protolayout = { group = "androidx.wear.protolayout", name = "protolayout", version.ref = "protolayout" }
 wear-protolayout-material3 = { group = "androidx.wear.protolayout", name = "protolayout-material3", version.ref = "protolayout" }

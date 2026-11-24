@@ -38,4 +38,6 @@ data class MessageEntity(
     val pending: Boolean = false,
     /** The model's reasoning summary for an assistant message; empty when the model sent none. */
     @ColumnInfo(defaultValue = "") val thinking: String = "",
+    /** Web pages the answer drew on, as JSON text (see WebSources); empty when it did not search. */
+    @ColumnInfo(defaultValue = "") val sources: String = "",
 )

@@ -19,6 +19,8 @@ import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
 import com.fullskat.watch.data.net.ModelEfforts
 import com.fullskat.watch.data.net.ProviderInfo
+import com.fullskat.watch.data.net.WebSource
+import com.fullskat.watch.data.net.WebSources
 import com.fullskat.watch.domain.ErrorKind
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
@@ -320,6 +322,44 @@ class ScreenshotTest {
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Failed(kind, null, retryAfterSec)
         shot(name) { ChatScreen(vm, id, autoListen = false) }
+    }
+
+    // ---- web sources under an answer ----
+
+    private fun seedSources(): String = runBlocking {
+        val dao = container.db.dialogDao()
+        val now = System.currentTimeMillis()
+        dao.insertDialog(DialogEntity("d5", "Какая завтра погода в Москве?", now, now))
+        dao.insertMessage(MessageEntity(dialogId = "d5", role = Role.USER, content = "Какая завтра погода в Москве?", createdAt = now - 2_000))
+        val sources = listOf(
+            WebSource("https://www.gismeteo.ru/weather-moscow-4368/tomorrow/", "Погода в Москве на завтра — прогноз погоды"),
+            WebSource("https://meteoinfo.ru/forecasts/russia/moscow-area/moscow", "Гидрометцентр России: прогноз по Москве"),
+            WebSource("https://xn--80aswg.xn--p1ai/pogoda", ""),
+        )
+        dao.insertMessage(
+            MessageEntity(
+                dialogId = "d5", role = Role.ASSISTANT, createdAt = now - 1_000,
+                content = "Завтра в Москве облачно, днём около +8 °C, вечером небольшой дождь.",
+                sources = WebSources.encode(sources),
+            ),
+        )
+        "d5"
+    }
+
+    @Test fun chat_sources_collapsed() {
+        val id = seedSources()
+        shot("31_chat_sources_collapsed") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+    }
+
+    @Test fun chat_sources_expanded() {
+        val id = seedSources()
+        shot("32_chat_sources_expanded") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        compose.mainClock.autoAdvance = true // no endless animation on this screen
+        compose.onNodeWithText("Sources (3)").performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage(File(dir, "32_chat_sources_expanded.png").path)
+        repeat(2) { compose.onRoot().performTouchInput { swipeUp(startY = 330f, endY = 90f, durationMillis = 1500) }; compose.waitForIdle() }
+        compose.onRoot().captureRoboImage(File(dir, "33_chat_sources_expanded_scrolled.png").path)
     }
 
     @Test fun limit_daily() = limit("26_limit_daily", ErrorKind.DAILY_LIMIT, 7 * 3600)

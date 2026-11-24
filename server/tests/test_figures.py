@@ -164,7 +164,7 @@ def scripted(*responses: bytes) -> tuple[httpx.AsyncClient, list[dict[str, Any]]
     return httpx.AsyncClient(transport=httpx.MockTransport(handler)), requests
 
 
-async def test_openrouter_draws_then_finishes_without_another_search(tmp_path: Path) -> None:
+async def test_openrouter_draws_next_to_the_web_search_server_tool(tmp_path: Path) -> None:
     first = sse(
         {"choices": [{"delta": {"content": "Graph:"}}]},
         *draw_call(json.dumps(SINE)),
@@ -175,8 +175,9 @@ async def test_openrouter_draws_then_finishes_without_another_search(tmp_path: P
     llm = OpenRouterLLM(settings(tmp_path), client)
     items = [i async for i in llm.stream([{"role": "user", "content": "q"}], "openai/gpt-6.1-terra")]
     assert items == ["Graph:", Figure(normalize_figure(SINE)[0]), " done", Usage(49, 32)]
-    assert requests[0]["tools"][0]["function"]["name"] == "draw"
-    assert requests[0]["plugins"][0]["id"] == "web" and "plugins" not in requests[1]
+    assert [t["type"] for t in requests[0]["tools"]] == ["openrouter:web_search", "function"]
+    assert requests[0]["tools"][1]["function"]["name"] == "draw"
+    assert requests[1]["tools"] == requests[0]["tools"]  # the model decides whether to search again
     assistant, tool = requests[1]["messages"][-2:]
     assert assistant["content"] == "Graph:"
     assert assistant["tool_calls"][0]["function"]["name"] == "draw"

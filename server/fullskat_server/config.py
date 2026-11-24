@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Chat providers are not pinned: every provider with an API key set is probed (see llm.MultiLLM) and
     # its models are offered to the watch for as long as the probe succeeds. Priority: anthropic, openrouter, kimi, openai.
-    # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
+    # Let the model search the web (Anthropic web_search tool, OpenRouter web_search server tool, OpenAI web_search, Kimi $web_search)
     web_search: bool = True
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
     # Stream the model's reasoning summary to the watch (SSE `thinking` events)

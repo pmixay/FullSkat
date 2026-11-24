@@ -158,7 +158,10 @@ class ApiClient {
         when (event) {
             "delta" -> ChatEvent.Delta(o.optString("text"))
             "thinking" -> ChatEvent.Thinking(o.optString("text"))
-            "done" -> ChatEvent.Done(o.optString("text"), o.optString("model").ifBlank { null }, o.optString("thinking"))
+            "done" -> ChatEvent.Done(
+                o.optString("text"), o.optString("model").ifBlank { null }, o.optString("thinking"),
+                WebSources.parse(o.optJSONArray("sources")),
+            )
             "error" -> ChatEvent.Error(o.optString("error", "error"), o.optString("message"), o.optInt("retry_after", 0))
             else -> null
         }

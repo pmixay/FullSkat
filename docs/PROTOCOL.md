@@ -86,7 +86,10 @@ token was revoked (state file reset).
   `WEB_SEARCH` is on: that setting is a master switch, so the client can turn search off but
   never on when the operator disabled it.
 * The model may search the web (`WEB_SEARCH`, default on); the search itself is
-  transparent to the client.
+  transparent to the client, which only gets the pages it used (`sources` in `done`).
+* `figures` is optional boolean, like `web_search`: absent or `null` uses the server default
+  (`FIGURES`, default on), `false` takes the `draw` tool away for this request, `true` cannot turn it on
+  when the operator disabled it. See [Figures](#figures) below.
 * The server prepends its own system prompt (short plain-text answers by default, in the
   language of the user; Markdown, LaTeX in `$...$` / `$$...$$` and fenced code blocks only when
   they really help, because the watch renders them; watch context).
@@ -98,10 +101,57 @@ token was revoked (state file reset).
   * `event: delta`  `data: {"text": "partial piece"}` (many)
   * `event: done`   `data: {"text": "<full answer>", "model": "...",
     "usage": {"prompt_tokens": n, "completion_tokens": n},
-    "thinking": "<full thinking text, empty string if none>"}`
+    "thinking": "<full thinking text, empty string if none>",
+    "sources": [{"url": "https://...", "title": "..."}]}`
+    * `sources`: the web pages the answer drew on when the model searched the web, empty list when it
+      did not search or the provider reports none. At most 8, deduplicated, in order of first use: the
+      pages the answer cites, or, if it cites none, the pages the search consulted. `url` is always an
+      `http(s)` URL (fragments and `utm_*` parameters removed); `title` may be an empty string. Claude,
+      OpenRouter and OpenAI report sources; Kimi's `$web_search` does not. Older clients ignore the field.
   * `event: error`  `data: {"error": "<code>", "message": "...", "retry_after": 90}` (`retry_after`
     seconds, only when known). Codes: `upstream_rate_limited` (provider pause), `upstream_quota`
     (provider credits spent), `upstream_auth` (provider rejected the server's key), `upstream_error`,
     `internal_error`.
 * Limits per token: 20/min (`429 rate_limited`), 500/day (`429 daily_limit`), both with
   `Retry-After`. Request body max 64 KiB.
+
+## Figures
+
+The model can draw with a `draw` tool (server: `fullskat_server/figures.py`, its JSON schema is the
+contract). The server checks and compacts each call, answers the tool and lets the model go on; the
+figure reaches the client inside the answer text, as one `delta` holding a fenced block on its own lines:
+
+````
+```figure
+{"title":"y = sin x","x_range":[-6.28319,6.28319],"items":[{"type":"function","expr":"sin(x)"}]}
+```
+````
+
+The JSON is a single line (backticks in strings are escaped as `\u0060`, so no line can close the
+fence) and is part of `done.text`, so it is stored and sent back in history like any other text.
+Old clients show it as a code block. The watch draws it natively and animates it in item order.
+
+Top level: `title`, `x_range` / `y_range` (`[min, max]`, fitted when absent), `x_label`, `y_label`,
+`axes` (default true), `grid` (default = axes), `equal` (same unit on both axes; default = not axes),
+`items` (1–32, drawn in order). Coordinates are math-style, y up.
+
+| `type` | fields |
+| --- | --- |
+| `function` | `expr` in `x`; optional `domain` [a, b], `area` [a, b] (shaded to the x axis) |
+| `parametric` | `x`, `y` in `t`; `t` [t0, t1] (default [0, 2π]) |
+| `polar` | `expr` = r(`t`), `t` range (default [0, 2π]) |
+| `line`, `scatter`, `polygon` | `points` [[x, y], …] (at most 500) |
+| `bars` | `values`, optional `labels`; several `bars` items are grouped series |
+| `pie` | `values` (≥ 0), `labels`; drawn alone |
+| `point`, `text` | `at` [x, y]; `text` for text |
+| `segment`, `arrow`, `rect` | `from`, `to` (a rect's opposite corners) |
+| `vline`, `hline` | `value` |
+| `circle`, `arc` | `center`, `r`; an arc's `start`, `end` in degrees, counterclockwise |
+| `angle` | `at` (vertex), `from`, `to` (points on the rays); 90° gets a square mark |
+| `path` | `d`: SVG path data in figure coordinates |
+
+Every item may have `label` (a legend entry for curves and series, a label in place for shapes; LaTeX in
+`$...$`), `color` (`amber`, `blue`, `magenta`, `violet`, `aqua`, `red`, `gray`, `white` or `#RRGGBB`),
+`dash`, `fill`. Expressions: numbers, the variable, `pi`, `e`, `+ - * / % ^`, implicit multiplication,
+`|x|`, comparisons, `if(c, a, b)` and `sin cos tan cot sec csc asin acos atan sinh cosh tanh exp ln log
+log10 log2 sqrt cbrt abs sign floor ceil round min max pow mod hypot atan2` (`log` is natural).

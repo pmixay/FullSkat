@@ -61,13 +61,14 @@ async def test_gateway_stream_translates_to_watch_items(tmp_path: Path):
     assert body["store"] is False and body["stream"] is True
     assert body["reasoning"] == {"effort": "low", "summary": "auto"}
     assert body["tools"] == [{"type": "web_search"}]
+    assert body["include"] == ["web_search_call.action.sources"]  # on Codex LB's include allowlist
     assert "max_tool_calls" not in body  # Codex backend rejects this parameter.
 
 
 async def test_openai_respects_search_and_summary_switches(tmp_path: Path):
     def handler(request):
         body = json.loads(request.content)
-        assert "tools" not in body and "reasoning" not in body
+        assert "tools" not in body and "reasoning" not in body and "include" not in body
         return httpx.Response(200, content=sse(
             {"type": "response.reasoning_summary_text.delta", "delta": "hidden"}, completed()))
 
@@ -189,3 +190,33 @@ async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
                     assert 'event: delta\ndata: {"text": "OK"}' in result.text
                     assert "event: done" in result.text and "event: error" not in result.text
         assert (tmp_path / "state.json").read_bytes() == state
+
+
+async def test_gateway_reports_cited_and_consulted_sources(tmp_path: Path):
+    from fullskat_server.sources import Source, Sources
+
+    search = {"type": "response.output_item.done", "output_index": 0, "item": {
+        "type": "web_search_call", "id": "ws_1", "status": "completed",
+        "action": {"type": "search", "query": "weather", "sources": [
+            {"type": "url", "url": "https://consulted.example/"}, {"type": "api", "name": "oai-weather"},
+        ]},
+    }}
+    annotation = {"type": "response.output_text.annotation.added", "output_index": 1, "content_index": 0,
+                  "annotation_index": 0, "annotation": {
+                      "type": "url_citation", "url": "https://cited.example/a?utm_source=openai", "title": "Cited",
+                      "start_index": 0, "end_index": 3}}
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body["input"][0]["content"] == "cited":
+            return httpx.Response(200, content=sse(
+                {"type": "response.web_search_call.in_progress", "item_id": "ws_1", "output_index": 0},
+                search, {"type": "response.output_text.delta", "delta": "+8"}, annotation, completed()))
+        return httpx.Response(200, content=sse(search, {"type": "response.output_text.delta", "delta": "+8"}, completed()))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OpenAILLM(settings(tmp_path), client)
+        cited = [x async for x in llm.stream([{"role": "user", "content": "cited"}], MODELS[0])]
+        uncited = [x async for x in llm.stream([{"role": "user", "content": "plain"}], MODELS[0])]
+    assert cited == ["+8", Sources((Source("https://cited.example/a", "Cited"),)), Usage(12, 7)]
+    assert uncited == ["+8", Sources((Source("https://consulted.example/", ""),)), Usage(12, 7)]

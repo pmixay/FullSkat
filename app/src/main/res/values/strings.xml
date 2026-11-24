@@ -78,4 +78,9 @@
     <string name="usage_left">%1$d%% left</string>
     <string name="figure_drawing">Drawing…</string>
     <string name="settings_figures">Drawings</string>
+    <string name="sources_title">Sources (%1$d)</string>
+    <string name="open_link">Open link</string>
+    <string name="opened_on_phone">Opened on phone</string>
+    <string name="phone_not_connected">Phone not connected</string>
+    <string name="link_failed">Couldn\'t open link</string>
 </resources>

@@ -52,6 +52,7 @@ data class ChatMessage(val role: String, val content: String)
 sealed interface ChatEvent {
     data class Delta(val text: String) : ChatEvent
     data class Thinking(val text: String) : ChatEvent
-    data class Done(val text: String, val model: String?, val thinking: String) : ChatEvent
+    /** [sources]: the web pages the answer drew on, empty when the model did not search. */
+    data class Done(val text: String, val model: String?, val thinking: String, val sources: List<WebSource> = emptyList()) : ChatEvent
     data class Error(val code: String, val message: String, val retryAfterSec: Int = 0) : ChatEvent
 }
