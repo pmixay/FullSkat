@@ -1,4 +1,4 @@
-name: Build watch APK
+name: Build APKs
 
 on:
   push:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   apk:
-    name: Release APK (Wear OS)
+    name: Release APKs (phone and Wear OS)
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -56,7 +56,7 @@ jobs:
           echo "FULLSKAT_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest :core:testDebugUnitTest --no-daemon --console=plain
+        run: ./gradlew :app:testDebugUnitTest :core:testDebugUnitTest :phone:testDebugUnitTest --no-daemon --console=plain
 
       # The Kotlin client against the real server (scripted model): sign-up, code linking, chat with a photo,
       # sync, live events, unlinking. Catches the apps and the server drifting apart.
@@ -78,13 +78,15 @@ jobs:
       - name: Screenshots
         if: ${{ startsWith(github.ref, 'refs/heads/claude/') }}
         continue-on-error: true
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' --tests 'com.fullskat.watch.RichTextScreenshotTest' --tests 'com.fullskat.watch.RichChatScreenshotTest' --tests 'com.fullskat.watch.FigureScreenshotTest' -Pscreenshots --no-daemon --console=plain
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' --tests 'com.fullskat.watch.RichTextScreenshotTest' --tests 'com.fullskat.watch.RichChatScreenshotTest' --tests 'com.fullskat.watch.FigureScreenshotTest' :phone:testDebugUnitTest --tests 'com.fullskat.phone.PhoneScreenshotTest' -Pscreenshots --no-daemon --console=plain
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() && startsWith(github.ref, 'refs/heads/claude/') }}
         with:
           name: fullskat-screenshots
-          path: app/build/screenshots
+          path: |
+            app/build/screenshots
+            phone/build/screenshots
           if-no-files-found: warn
           retention-days: 3
 
@@ -95,28 +97,38 @@ jobs:
           FULLSKAT_KEY_PASSWORD: ${{ secrets.FULLSKAT_KEY_PASSWORD }}
           FULLSKAT_VERSION_CODE: ${{ github.run_number }}
           FULLSKAT_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('1.0.{0}', github.run_number) }}
-        run: ./gradlew :app:assembleRelease --no-daemon --console=plain
+        run: ./gradlew :app:assembleRelease :phone:assembleRelease --no-daemon --console=plain
 
-      - name: Collect APK
+      - name: Collect APKs
         id: apk
         run: |
           set -e
-          apk=$(ls app/build/outputs/apk/release/*.apk | head -1)
-          mkdir -p out
-          cp "$apk" out/fullskat-watch.apk
-          echo "size=$(du -h out/fullskat-watch.apk | cut -f1)" >> "$GITHUB_OUTPUT"
+          mkdir -p out/watch out/phone
+          cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" out/watch/fullskat-watch.apk
+          cp "$(ls phone/build/outputs/apk/release/*.apk | head -1)" out/phone/fullskat-phone.apk
+          echo "watch=$(du -h out/watch/fullskat-watch.apk | cut -f1)" >> "$GITHUB_OUTPUT"
+          echo "phone=$(du -h out/phone/fullskat-phone.apk | cut -f1)" >> "$GITHUB_OUTPUT"
 
-      # The artifact is one zip archive containing only fullskat-watch.apk, compressed at level 9.
+      # Each artifact is one zip archive containing only its APK, compressed at level 9.
       - uses: actions/upload-artifact@v7
         with:
           name: fullskat-watch-apk
-          path: out/fullskat-watch.apk
+          path: out/watch/fullskat-watch.apk
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fullskat-phone-apk
+          path: out/phone/fullskat-phone.apk
           if-no-files-found: error
           compression-level: 9
           retention-days: 7
 
       - name: Summary
-        run: echo "APK built (${{ steps.apk.outputs.size }}). Download the fullskat-watch-apk artifact; the zip contains only fullskat-watch.apk." >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Watch APK ${{ steps.apk.outputs.watch }} (artifact fullskat-watch-apk), phone APK ${{ steps.apk.outputs.phone }} (artifact fullskat-phone-apk). Each zip contains only its APK." >> "$GITHUB_STEP_SUMMARY"
 
   server-tests:
     name: Server tests

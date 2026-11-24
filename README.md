@@ -29,6 +29,19 @@ own account.
    web search and drawings are shared settings; vibration stays per device.
 4. Answers are generated on the server, so they finish even if the asking device loses its connection.
 
+## What the phone app does
+
+| Feature | How |
+| --- | --- |
+| Account | Sign up with your name and the server passcode. Settings shows your name (tap to change), the devices on your account with their last activity (unlink any of them), and Sign out. Being unlinked from another device returns the app to sign-up. |
+| Link a watch | Settings → Link a watch: six boxes for the code the watch shows (only the code alphabet is accepted, auto-advance, paste); wrong or expired codes and too many attempts are explained. |
+| Dialogs | The account's dialogs, newest first, with a one-line preview (formulas as Unicode, drawings and code as `[drawing]`/`[code]`); new dialog button, pull to refresh, swipe to delete, long press to rename or delete. Live updates while the app is open. |
+| Chat | Your questions on the right with their photos; answers rendered like on the watch (Markdown, LaTeX, highlighted code, animated figures), with the collapsible reasoning summary and web sources (tap opens the browser, long press copies). A question that did not reach the server says so and can be resent; failed answers show the reason; usage limits show when to try again. Answers keep running if you leave the chat; Stop ends them. |
+| Photos | Attach up to 4 images per question from the photo picker or the camera (plain Android capture); they are scaled to 1568 px before upload, shown as chips with progress, and sent to the model as images. Images shared from other apps open a new dialog with them attached. Tap a photo for a full-screen view with pinch zoom. |
+| Voice | The mic button dictates with Android's speech recognizer, on the device when it can; the words appear in the text field while you speak. |
+| Figures | Inline as on the watch; tap for a full-screen viewer with pinch zoom, drag and double tap to reset and replay. |
+| Settings | Model (grouped by provider, with each provider's budget ring), thinking effort (only the levels the model supports), web search and drawings: shared with your watch. |
+
 ## What the watch app does
 
 | Feature | How |
@@ -64,8 +77,9 @@ Requirements: JDK 21, Android SDK with `platforms;android-37` and `build-tools;3
 (set `sdk.dir` in `local.properties` or `ANDROID_HOME`).
 
 ```sh
-./gradlew :app:assembleRelease
-# app/build/outputs/apk/release/app-release.apk
+./gradlew :app:assembleRelease :phone:assembleRelease
+# app/build/outputs/apk/release/app-release.apk     (watch)
+# phone/build/outputs/apk/release/phone-release.apk (phone)
 ```
 
 Release signing reads `FULLSKAT_KEYSTORE_FILE`, `FULLSKAT_KEYSTORE_PASSWORD`,
@@ -81,9 +95,12 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 ## CI
 
-`.github/workflows/build-apk.yml` builds the release APK on every push to `main` and `claude/**` branches, on
-tags `v*` (push only: no pull-request or manual triggers). The uploaded artifact `fullskat-watch-apk` is
-a single zip, compressed at level 9, containing only `fullskat-watch.apk`. To sign with
+`.github/workflows/build-apk.yml` builds both release APKs on every push to `main` and `claude/**` branches, on
+tags `v*` (push only: no pull-request or manual triggers). The uploaded artifacts `fullskat-watch-apk` and
+`fullskat-phone-apk` are single zips, compressed at level 9, containing only `fullskat-watch.apk` and
+`fullskat-phone.apk`. It also runs the unit tests of all three Android modules, a client-server interop test
+(the Kotlin client against the real server with a scripted model, `tools/interop/`) and, on `claude/**`
+branches, renders the watch and phone screenshots (artifact `fullskat-screenshots`). To sign with
 your own key add the repository secrets `FULLSKAT_KEYSTORE_B64` (base64 of the `.jks`),
 `FULLSKAT_KEYSTORE_PASSWORD`, `FULLSKAT_KEY_ALIAS`, `FULLSKAT_KEY_PASSWORD`. The same
 workflow runs the server test suite.
