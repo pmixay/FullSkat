@@ -82,20 +82,30 @@ class Settings(BaseSettings):
     # Explicit per-model effort overrides; otherwise read gateway /models metadata.
     openai_model_efforts: dict[str, str] = Field(default_factory=dict)
 
-    # Identity and storage
+    # Identity and storage: DATA_DIR holds fullskat.db (SQLite) and attachments/ (images)
     server_name: str = "FullSkat"
     data_dir: Path = Path("./data")
 
-    # Rate limits
+    # Rate limits. Sign-up (POST /v1/register) per client IP; the PAIR_* names are kept from the old pairing.
     pair_per_min: int = Field(default=5, ge=1)
     pair_lock_failures: int = Field(default=10, ge=1)
     pair_lock_minutes: int = Field(default=15, ge=1)
+    # Code linking: starts per client IP, claims per user (with a lockout after consecutive wrong codes)
+    link_start_per_min: int = Field(default=20, ge=1)
+    link_claim_per_min: int = Field(default=10, ge=1)
+    link_claim_lock_failures: int = Field(default=5, ge=1)
+    link_claim_lock_minutes: int = Field(default=5, ge=1)
+    # Chat per user (all their devices together)
     chat_per_min: int = Field(default=20, ge=1)
     chat_per_day: int = Field(default=500, ge=1)
+    # Image uploads per user
+    uploads_per_hour: int = Field(default=60, ge=1)
 
     # Chat shaping
     max_history_messages: int = Field(default=24, ge=1)
     max_history_chars: int = Field(default=12000, ge=1)
+    # Images go to the model only with the newest N user messages that have any (older ones become "[image]")
+    max_history_image_messages: int = Field(default=2, ge=0)
 
     # Networking / misc
     trust_proxy_headers: bool = False

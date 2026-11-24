@@ -75,15 +75,89 @@ class LLMError(Exception):
         self.retry_after = retry_after  # seconds, when the upstream said how long to wait
 
 
-def trim_history(messages: list[dict[str, str]], max_messages: int, max_chars: int) -> list[dict[str, str]]:
-    """Keep the newest messages within both the count and the total-character budget.
+# ---- messages ---------------------------------------------------------------
+#
+# Providers get the conversation as OpenAI-style dicts: {"role": "system" | "user" | "assistant", "content": str},
+# where a user turn may also carry "images": [ChatImage, ...]. Each provider turns such a turn into its own
+# multimodal format (anthropic_message, chat_completions_message, responses_message); turns without images are
+# sent exactly as before.
 
-    The newest message is always kept (truncated if it alone exceeds the budget).
+# What one image counts as in the history budget (MAX_HISTORY_CHARS). Images are bounded separately (only the
+# recent turns carry them), so this keeps a photo turn from being free without letting it push out all text.
+IMAGE_CHARS = 1000
+
+
+@dataclass(frozen=True)
+class ChatImage:
+    """An image of a user turn: base64 data, already normalised by the server (images.py)."""
+
+    data: str  # base64
+    mime: str = "image/jpeg"
+
+    @property
+    def data_url(self) -> str:
+        return f"data:{self.mime};base64,{self.data}"
+
+
+def _images(message: dict[str, Any]) -> list[ChatImage]:
+    return list(message.get("images") or ())
+
+
+def _without_images(message: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in message.items() if key != "images"}
+
+
+def anthropic_message(message: dict[str, Any]) -> dict[str, Any]:
+    """Claude: base64 image blocks first, then the text (an empty text block is not allowed)."""
+    images = _images(message)
+    if not images:
+        return {"role": message["role"], "content": message["content"]}
+    blocks: list[dict[str, Any]] = [
+        {"type": "image", "source": {"type": "base64", "media_type": image.mime, "data": image.data}}
+        for image in images
+    ]
+    if message["content"]:
+        blocks.append({"type": "text", "text": message["content"]})
+    return {"role": message["role"], "content": blocks}
+
+
+def chat_completions_message(message: dict[str, Any]) -> dict[str, Any]:
+    """OpenAI-style chat completions (OpenRouter, Kimi): a text part, then `image_url` parts with data URLs."""
+    images = _images(message)
+    if not images:
+        return _without_images(message)
+    parts: list[dict[str, Any]] = []
+    if message["content"]:
+        parts.append({"type": "text", "text": message["content"]})
+    parts.extend({"type": "image_url", "image_url": {"url": image.data_url}} for image in images)
+    return {"role": message["role"], "content": parts}
+
+
+def responses_message(message: dict[str, Any]) -> dict[str, Any]:
+    """OpenAI Responses input: `input_text` and `input_image` parts. Other input items pass through."""
+    images = _images(message)
+    if not images:
+        return _without_images(message)
+    parts: list[dict[str, Any]] = []
+    if message["content"]:
+        parts.append({"type": "input_text", "text": message["content"]})
+    parts.extend({"type": "input_image", "image_url": image.data_url, "detail": "auto"} for image in images)
+    return {"role": message["role"], "content": parts}
+
+
+def _cost(message: dict[str, Any]) -> int:
+    return len(message["content"]) + IMAGE_CHARS * len(_images(message))
+
+
+def trim_history(messages: list[dict[str, Any]], max_messages: int, max_chars: int) -> list[dict[str, Any]]:
+    """Keep the newest messages within both the count and the total-character budget (an image counts IMAGE_CHARS).
+
+    The newest message is always kept (its text truncated if it alone exceeds the budget).
     """
     kept = messages[-max_messages:]
-    total = sum(len(m["content"]) for m in kept)
+    total = sum(_cost(m) for m in kept)
     while len(kept) > 1 and total > max_chars:
-        total -= len(kept[0]["content"])
+        total -= _cost(kept[0])
         kept = kept[1:]
     if kept and len(kept[0]["content"]) > max_chars:
         kept = [{**kept[0], "content": kept[0]["content"][:max_chars]}]
@@ -359,7 +433,7 @@ class _ChatCompletionsLLM:
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str,
         *,
         effort: str | None = None,
@@ -507,7 +581,7 @@ class OpenRouterLLM(_ChatCompletionsLLM):
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": [chat_completions_message(m) for m in messages],
             "stream": True,
             "max_tokens": self._settings.openrouter_max_tokens,
             "usage": {"include": True},
@@ -631,7 +705,7 @@ class OpenAILLM(_ChatCompletionsLLM):
         body: dict[str, Any] = {
             "model": model,
             "instructions": "\n\n".join(m["content"] for m in messages if m.get("role") == "system"),
-            "input": [m for m in messages if m.get("role") != "system"],
+            "input": [responses_message(m) for m in messages if m.get("role") != "system"],
             "stream": True,
             "store": False,
             "max_output_tokens": self._settings.openai_max_tokens,
@@ -656,7 +730,7 @@ class OpenAILLM(_ChatCompletionsLLM):
         return body
 
     async def stream(
-        self, messages: list[dict[str, str]], model: str, *,
+        self, messages: list[dict[str, Any]], model: str, *,
         effort: str | None = None, web_search: bool | None = None, figures: bool | None = None,
     ) -> AsyncIterator[str | Thinking | Figure | Usage]:
         """Translate Responses events to watch items. A response that ends in draw calls is answered and continued:
@@ -818,7 +892,7 @@ class KimiLLM(_ChatCompletionsLLM):
         """`web_search` here means "offer the builtin search tool in this request" (see `_search_arg`)."""
         body: dict[str, Any] = {
             "model": model,
-            "messages": messages,
+            "messages": [chat_completions_message(m) for m in messages],
             "stream": True,
             "max_tokens": self._settings.kimi_max_tokens,
             "stream_options": {"include_usage": True},
@@ -906,10 +980,10 @@ def _supports(capability: Any, level: str) -> bool:
     return bool(getattr(entry, "supported", False))
 
 
-def _anthropic_conversation(messages: list[dict[str, str]]) -> tuple[str, list[dict[str, str]]]:
+def _anthropic_conversation(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
     """Split OpenAI-style messages into the system prompt and a conversation that starts with a user turn."""
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
-    conversation = [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] != "system"]
+    conversation = [anthropic_message(m) for m in messages if m["role"] != "system"]
     while conversation and conversation[0]["role"] != "user":
         conversation.pop(0)
     return system, conversation
@@ -1003,7 +1077,7 @@ class AnthropicLLM:
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str,
         *,
         effort: str | None = None,
@@ -1210,7 +1284,7 @@ class MultiLLM:
 
     async def stream(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         model: str,
         *,
         effort: str | None = None,

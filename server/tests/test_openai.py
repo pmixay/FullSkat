@@ -1,4 +1,4 @@
-"""Responses gateway compatibility and the unchanged watch protocol."""
+"""Responses gateway compatibility and the chat protocol on top of it."""
 
 import json
 from pathlib import Path
@@ -156,7 +156,7 @@ async def test_gateway_efforts_usage_and_recovery(tmp_path: Path):
         assert (await router.models())[1] == MODELS
 
 
-async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
+async def test_existing_account_works_after_server_restart(tmp_path: Path):
     cfg = settings(tmp_path)
 
     def handler(request):
@@ -172,10 +172,10 @@ async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
         app.state.llm = create_llm(cfg, gateway)
         async with app.router.lifespan_context(app):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://watch") as watch:
-                paired = await watch.post("/v1/pair", json={"device_id": "watch", "passcode": "1234"})
-                assert paired.status_code == 201
-                auth = {"Authorization": f"Bearer {paired.json()['token']}"}
-        state = (tmp_path / "state.json").read_bytes()
+                registered = await watch.post("/v1/register", json={
+                    "device_id": "watch", "passcode": "1234", "name": "Owner", "device_kind": "watch"})
+                assert registered.status_code == 201
+                auth = {"Authorization": f"Bearer {registered.json()['token']}"}
         restarted = create_app(cfg)
         restarted.state.llm = create_llm(cfg, gateway)
         async with restarted.router.lifespan_context(restarted):
@@ -189,7 +189,6 @@ async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
                     assert result.status_code == 200
                     assert 'event: delta\ndata: {"text": "OK"}' in result.text
                     assert "event: done" in result.text and "event: error" not in result.text
-        assert (tmp_path / "state.json").read_bytes() == state
 
 
 async def test_gateway_reports_cited_and_consulted_sources(tmp_path: Path):

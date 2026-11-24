@@ -1,16 +1,13 @@
-"""Passcode hashing, bearer tokens and the persistent pairing state (DATA_DIR/state.json)."""
+"""Passcode hashing, bearer tokens and the reader for the pre-v2 pairing state (DATA_DIR/state.json)."""
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import logging
-import os
 import secrets
-import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,10 +17,6 @@ log = logging.getLogger(__name__)
 
 PBKDF2_ITERATIONS = 200_000
 SALT_BYTES = 16
-
-
-class InvalidPasscode(Exception):
-    """Raised when the supplied passcode does not match the stored one."""
 
 
 @dataclass(frozen=True)
@@ -47,27 +40,19 @@ class PasscodeRecord:
 
 
 @dataclass(frozen=True)
-class TokenRecord:
+class LegacyToken:
+    """A token issued by the old `POST /v1/pair`, as state.json kept it (hashed)."""
+
+    token_hash: str
     device_id: str
     device_name: str
-    created_at: str  # ISO-8601 UTC
-
-    def to_json(self) -> dict[str, Any]:
-        return {"device_id": self.device_id, "device_name": self.device_name, "created_at": self.created_at}
-
-    @classmethod
-    def from_json(cls, data: dict[str, Any]) -> TokenRecord:
-        return cls(
-            device_id=str(data.get("device_id", "")),
-            device_name=str(data.get("device_name", "")),
-            created_at=str(data.get("created_at", "")),
-        )
+    created_at: str  # ISO-8601 UTC, may be empty
 
 
 @dataclass(frozen=True)
-class PairResult:
-    token: str
-    first_setup: bool
+class LegacyState:
+    passcode: PasscodeRecord | None
+    tokens: list[LegacyToken]
 
 
 def _now_iso() -> str:
@@ -91,7 +76,7 @@ def hash_passcode(passcode: str, iterations: int = PBKDF2_ITERATIONS) -> Passcod
 
 
 def verify_passcode(passcode: str, record: PasscodeRecord) -> bool:
-    """Constant-time comparison of a candidate passcode against a stored record."""
+    """Constant-time comparison of a candidate passcode against a stored record (CPU-bound, like hash_passcode)."""
     salt = base64.b64decode(record.salt)
     expected = base64.b64decode(record.hash)
     candidate = _derive(passcode, salt, record.iterations)
@@ -99,103 +84,33 @@ def verify_passcode(passcode: str, record: PasscodeRecord) -> bool:
 
 
 def generate_token() -> str:
-    """256-bit URL-safe random bearer token."""
+    """256-bit URL-safe random bearer token (also used for link ids)."""
     return secrets.token_urlsafe(32)
 
 
 def token_hash(token: str) -> str:
-    """Tokens are stored hashed; a leaked state file must not yield usable credentials."""
+    """Tokens are stored hashed; a leaked database must not yield usable credentials."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-class StateStore:
-    """Pairing state persisted as JSON. Safe to use from threads and coroutines.
+def read_legacy_state(path: Path) -> LegacyState:
+    """Parse the old pairing state file.
 
-    Layout of the file:
-        {"passcode": {salt, hash, iterations, set_at} | null,
-         "tokens": {<sha256 of token>: {device_id, device_name, created_at}}}
+    Layout: {"passcode": {salt, hash, iterations, set_at} | null,
+             "tokens": {<sha256 of token>: {device_id, device_name, created_at}}}
+    Raises OSError / ValueError when the file cannot be read or parsed.
     """
-
-    def __init__(self, path: Path) -> None:
-        self.path = Path(path)
-        self._lock = threading.Lock()
-        self._async_lock = asyncio.Lock()
-        self._passcode: PasscodeRecord | None = None
-        self._tokens: dict[str, TokenRecord] = {}
-        self._load()
-
-    # ---- persistence -------------------------------------------------------
-
-    def _load(self) -> None:
-        if not self.path.exists():
-            return
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            log.error("Cannot read state file %s (%s); starting with empty state", self.path, exc)
-            return
-        passcode = raw.get("passcode")
-        self._passcode = PasscodeRecord.from_json(passcode) if passcode else None
-        self._tokens = {
-            str(key): TokenRecord.from_json(value) for key, value in (raw.get("tokens") or {}).items()
-        }
-        log.info("Loaded state from %s (paired=%s, tokens=%d)", self.path, self.is_paired, len(self._tokens))
-
-    def _save_locked(self) -> None:
-        """Write the state atomically: temp file in the same directory, then os.replace."""
-        payload = {
-            "passcode": self._passcode.to_json() if self._passcode else None,
-            "tokens": {key: record.to_json() for key, record in self._tokens.items()},
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2)
-            fh.flush()
-            os.fsync(fh.fileno())
-        try:
-            os.chmod(tmp, 0o600)
-        except OSError:
-            pass
-        os.replace(tmp, self.path)
-
-    # ---- queries -----------------------------------------------------------
-
-    @property
-    def is_paired(self) -> bool:
-        with self._lock:
-            return self._passcode is not None
-
-    def lookup_token(self, token: str) -> TokenRecord | None:
-        with self._lock:
-            return self._tokens.get(token_hash(token))
-
-    # ---- mutations ---------------------------------------------------------
-
-    async def pair(self, passcode: str, device_id: str, device_name: str) -> PairResult:
-        """Set the passcode on first use, otherwise verify it; issue a token for the device.
-
-        Raises InvalidPasscode on mismatch. Hashing runs off the event loop.
-        """
-        async with self._async_lock:
-            with self._lock:
-                current = self._passcode
-            if current is None:
-                record = await asyncio.to_thread(hash_passcode, passcode)
-                first_setup = True
-            else:
-                if not await asyncio.to_thread(verify_passcode, passcode, current):
-                    raise InvalidPasscode()
-                record = current
-                first_setup = False
-            token = generate_token()
-            with self._lock:
-                if self._passcode is None:
-                    self._passcode = record
-                self._tokens = {k: v for k, v in self._tokens.items() if v.device_id != device_id}
-                self._tokens[token_hash(token)] = TokenRecord(
-                    device_id=device_id, device_name=device_name, created_at=_now_iso()
-                )
-                self._save_locked()
-            log.info("Paired device %r (%s), first_setup=%s", device_name, device_id, first_setup)
-            return PairResult(token=token, first_setup=first_setup)
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("state file is not a JSON object")
+    passcode = raw.get("passcode")
+    tokens: list[LegacyToken] = []
+    for key, value in (raw.get("tokens") or {}).items():
+        value = value if isinstance(value, dict) else {}
+        tokens.append(LegacyToken(
+            token_hash=str(key),
+            device_id=str(value.get("device_id") or ""),
+            device_name=str(value.get("device_name") or ""),
+            created_at=str(value.get("created_at") or ""),
+        ))
+    return LegacyState(PasscodeRecord.from_json(passcode) if passcode else None, tokens)
