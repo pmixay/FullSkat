@@ -58,6 +58,22 @@ jobs:
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest :core:testDebugUnitTest --no-daemon --console=plain
 
+      # The Kotlin client against the real server (scripted model): sign-up, code linking, chat with a photo,
+      # sync, live events, unlinking. Catches the apps and the server drifting apart.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: server/pyproject.toml
+
+      - name: Client-server interop
+        run: |
+          set -e
+          pip install -e server > /dev/null
+          python3 tools/interop/fake_server.py 8765 "$RUNNER_TEMP/interop" > "$RUNNER_TEMP/interop.log" 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8765/healthz > /dev/null && break; sleep 1; done
+          ./gradlew :core:testDebugUnitTest -Pinterop=http://127.0.0.1:8765 --tests 'com.fullskat.core.ServerInteropTest' --no-daemon --console=plain || { cat "$RUNNER_TEMP/interop.log"; exit 1; }
+
       # Renders the real screens on the JVM (Robolectric) for review; never blocks the APK.
       - name: Screenshots
         if: ${{ startsWith(github.ref, 'refs/heads/claude/') }}

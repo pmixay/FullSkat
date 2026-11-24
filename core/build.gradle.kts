@@ -27,6 +27,11 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all {
+                // ./gradlew :core:testDebugUnitTest -Pinterop=http://127.0.0.1:8765 runs ServerInteropTest against a
+                // real server (tools/interop/fake_server.py); without the property that test is skipped.
+                providers.gradleProperty("interop").orNull?.let { url -> it.systemProperty("fullskat.interop.url", url) }
+            }
         }
     }
 }

@@ -109,7 +109,8 @@ class ChatRepository(
                     }
                     is ChatEvent.Done -> {
                         val saved = ev.message
-                        if (saved != null) dao.upsertMessage(SyncEngine.entityOf(saved))
+                        if (saved != null && saved.deleted) dao.deleteMessage(saved.id) // deleted while it streamed
+                        else if (saved != null) dao.upsertMessage(SyncEngine.entityOf(saved))
                         else dao.upsertMessage(
                             (dao.message(answerId) ?: return@collect).copy(
                                 content = ev.text.ifBlank { sb.toString() }, thinking = ev.thinking.ifBlank { tb.toString() },

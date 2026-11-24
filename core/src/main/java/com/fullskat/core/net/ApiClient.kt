@@ -1,7 +1,12 @@
 package com.fullskat.core.net
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -171,7 +176,7 @@ class ApiClient(private val baseUrl: String) {
     suspend fun downloadAttachment(token: String, id: String, thumb: Boolean): ByteArray? = io {
         val req = Request.Builder().url("$baseUrl/v1/attachments/${enc(id)}" + if (thumb) "?size=thumb" else "")
             .header("Authorization", "Bearer $token").get().build()
-        execute(http, req).use { resp ->
+        withCall(http, req) { resp ->
             when (resp.code) {
                 200 -> resp.body.bytes()
                 404 -> null
@@ -193,7 +198,7 @@ class ApiClient(private val baseUrl: String) {
         request.webSearch?.let { body.put("web_search", it) }
         request.figures?.let { body.put("figures", it) }
         val req = post("/v1/chat", body, token).newBuilder().header("Accept", "text/event-stream").build()
-        execute(http, req).use { resp ->
+        withCall(http, req) { resp ->
             if (resp.code != 200) throw error(resp.code, resp.body.string(), resp.header("Retry-After")?.toIntOrNull())
             readEvents(resp.body.source()) { event, data ->
                 val ev = JsonModels.chatEvent(event, data) ?: return@readEvents true
@@ -212,7 +217,7 @@ class ApiClient(private val baseUrl: String) {
     /** `GET /v1/events` until the server closes it or the collector stops; reconnecting is up to the caller. */
     fun events(token: String): Flow<LiveEvent> = flow {
         val req = get("/v1/events", token).newBuilder().header("Accept", "text/event-stream").build()
-        execute(streaming, req).use { resp ->
+        withCall(streaming, req) { resp ->
             if (resp.code != 200) throw error(resp.code, resp.body.string())
             readEvents(resp.body.source()) { event, data ->
                 when (event) {
@@ -232,7 +237,12 @@ class ApiClient(private val baseUrl: String) {
         val data = StringBuilder()
         while (true) {
             currentCoroutineContext().ensureActive()
-            val line = try { source.readUtf8Line() } catch (e: IOException) { throw ApiException.Network(e.message ?: "stream") } ?: break
+            val line = try {
+                source.readUtf8Line()
+            } catch (e: IOException) {
+                currentCoroutineContext().ensureActive() // cancelled: the call was closed under the read
+                throw ApiException.Network(e.message ?: "stream")
+            } ?: break
             when {
                 line.isEmpty() -> {
                     if (data.isNotEmpty() && !onEvent(event, data.toString())) return
@@ -261,22 +271,39 @@ class ApiClient(private val baseUrl: String) {
         return b.build()
     }
 
-    private fun <T> call(req: Request, handle: (Int, String) -> T): T = callWith(http, req, handle)
+    private suspend fun <T> call(req: Request, handle: (Int, String) -> T): T = callWith(http, req, handle)
 
-    private fun <T> callWith(client: OkHttpClient, req: Request, handle: (Int, String) -> T): T =
-        execute(client, req).use { resp ->
+    private suspend fun <T> callWith(client: OkHttpClient, req: Request, handle: (Int, String) -> T): T =
+        withCall(client, req) { resp ->
             val text = resp.body.string()
             if (resp.code == 429) throw error(429, text, resp.header("Retry-After")?.toIntOrNull())
             handle(resp.code, text)
         }
 
-    private fun execute(client: OkHttpClient, req: Request): Response = try {
-        client.newCall(req).execute()
-    } catch (e: IOException) {
-        throw ApiException.Network(e.message ?: "network")
+    /**
+     * Runs the call on this thread and hands the open response to [block]. The call is tied to the coroutine: a
+     * watcher child closes it as soon as the coroutine is cancelled, which also unblocks a read of its body that
+     * is waiting on the network (a long-poll, an event stream, a streaming answer).
+     */
+    private suspend fun <T> withCall(client: OkHttpClient, req: Request, block: suspend (Response) -> T): T = coroutineScope {
+        val call = client.newCall(req)
+        val watcher = launch(start = CoroutineStart.UNDISPATCHED) {
+            try { awaitCancellation() } finally { call.cancel() }
+        }
+        try {
+            val response = try {
+                call.execute()
+            } catch (e: IOException) {
+                ensureActive()
+                throw ApiException.Network(e.message ?: "network")
+            }
+            response.use { block(it) }
+        } finally {
+            watcher.cancel()
+        }
     }
 
-    private suspend fun <T> io(block: () -> T): T = withContext(Dispatchers.IO) { block() }
+    private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 
