@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -57,15 +58,20 @@ fun SourcesBlock(sources: List<WebSource>) {
     val scope = rememberCoroutineScope()
     var opening by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<LinkOpener.Result?>(null) }
-    // Opened at the end of the chat, the rows would land below the screen edge: scroll them into view.
+    // Opened at the end of the chat, the rows would land below the screen edge: scroll them into view. Only on a
+    // tap (not saved), so an expanded block that scrolls back into the list does not pull the list along.
     val revealRows = remember { BringIntoViewRequester() }
-    LaunchedEffect(expanded) { if (expanded) revealRows.bringIntoView() }
+    var reveals by remember { mutableIntStateOf(0) }
+    LaunchedEffect(reveals) { if (reveals > 0) revealRows.bringIntoView() }
 
     Column(Modifier.fillMaxWidth().padding(top = 2.dp).bringIntoViewRequester(revealRows)) {
         Row(
             Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .clickable { expanded = !expanded }
+                .clickable {
+                    expanded = !expanded
+                    if (expanded) reveals++
+                }
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
