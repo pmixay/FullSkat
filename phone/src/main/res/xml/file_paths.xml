@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Photos from the camera; the cache may be cleared at any time once they are uploaded. -->
+    <cache-path name="camera" path="camera/" />
+</paths>

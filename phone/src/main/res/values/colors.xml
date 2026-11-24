@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ember_background">#121212</color>
+    <color name="ember_accent">#FFB35C</color>
+    <color name="ic_launcher_background">#1A1B1F</color>
+</resources>
