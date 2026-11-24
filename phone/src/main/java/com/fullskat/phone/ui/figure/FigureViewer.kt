@@ -135,8 +135,9 @@ private fun FigureCanvas(figure: Figure, replay: Int, modifier: Modifier) {
         val chart = figure.pie != null || figure.bars.isNotEmpty()
         val wPx = with(density) { maxWidth.toPx() }
         val boxH = with(density) { maxHeight.toPx() }
-        // Charts keep the proportions they have in the chat; plane figures take the whole area.
-        val hPx = if (chart) minOf(boxH, wPx * FigureScene.aspect(figure, fitted)) else boxH
+        // Charts keep the proportions they have in the chat; plane figures get more height, up to 1.25 x the width
+        // (a taller strip would only show empty plane; pan and zoom reach the rest).
+        val hPx = minOf(boxH, wPx * if (chart) FigureScene.aspect(figure, fitted) else MAX_PLANE_ASPECT)
         val base = remember(figure, wPx, hPx) { baseView(figure, fitted, wPx, hPx) }
         val scene = remember(figure, view, base, wPx, hPx) {
             FigureScene(figure, view ?: base, wPx, hPx, density.density, env, FigureScene.Mode.INLINE)
@@ -191,6 +192,8 @@ private fun FigureCanvas(figure: Figure, replay: Int, modifier: Modifier) {
         }
     }
 }
+
+private const val MAX_PLANE_ASPECT = 1.25f
 
 /**
  * The view the viewer opens with. A plane figure keeps the scale it has in the chat (where it is drawn at the

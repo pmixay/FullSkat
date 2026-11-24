@@ -35,11 +35,7 @@ class PhoneContainer(context: Context) {
     /** The account is gone on this device (signed out here, or unlinked from another device): back to onboarding. */
     val signedOut: SharedFlow<Unit> = _signedOut.asSharedFlow()
 
-    private val _openDialog = MutableSharedFlow<String>(extraBufferCapacity = 1)
-
-    /** A dialog to open now (made for something shared into the app). */
-    val openDialog: SharedFlow<String> = _openDialog.asSharedFlow()
-
+    /** Something shared into the app; the app opens its dialog, whose chat screen takes it (and clears this). */
     val pendingShare = MutableStateFlow<SharedDraft?>(null)
 
     init {
@@ -70,11 +66,7 @@ class PhoneContainer(context: Context) {
 
     /** Starts a new dialog with what was shared; the chat screen picks it up from [pendingShare]. */
     fun share(text: String, images: List<Uri>) {
-        core.scope.launch {
-            val id = core.sync.newDialog()
-            pendingShare.value = SharedDraft(id, text, images)
-            _openDialog.emit(id)
-        }
+        core.scope.launch { pendingShare.value = SharedDraft(core.sync.newDialog(), text, images) }
     }
 
     internal fun onForeground() {

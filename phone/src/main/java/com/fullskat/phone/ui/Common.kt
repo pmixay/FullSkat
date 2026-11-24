@@ -63,7 +63,10 @@ fun errorText(error: ChatError): String = stringResource(
     when (error) {
         ChatError.NO_CONNECTION -> R.string.err_network
         ChatError.SIGNED_OUT -> R.string.err_signed_out
-        ChatError.RATE_LIMITED, ChatError.DAILY_LIMIT, ChatError.QUOTA, ChatError.PROVIDER_BUSY -> R.string.err_rate
+        ChatError.RATE_LIMITED -> R.string.err_rate
+        ChatError.DAILY_LIMIT -> R.string.limit_daily_body
+        ChatError.QUOTA -> R.string.limit_quota_body
+        ChatError.PROVIDER_BUSY -> R.string.limit_busy_body
         ChatError.PROVIDER_AUTH -> R.string.err_provider_auth
         ChatError.NO_PROVIDER -> R.string.err_no_provider
         ChatError.MODEL_UNAVAILABLE -> R.string.err_model_unavailable

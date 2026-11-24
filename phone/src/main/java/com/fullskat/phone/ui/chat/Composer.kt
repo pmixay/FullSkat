@@ -138,7 +138,8 @@ fun Composer(
         ) {
             AttachButton(enabled = canAttach && uploading == null, onGallery = onGallery, onCamera = onCamera)
             TextField(
-                value = input,
+                // while images upload, the text on its way stays in view (locked)
+                value = uploading?.let { TextFieldValue(it.draft.text) } ?: input,
                 onValueChange = onInput,
                 enabled = uploading == null,
                 placeholder = { Text(stringResource(if (action == ComposerAction.LISTENING) R.string.listening else R.string.message_hint)) },

@@ -54,7 +54,12 @@ class ChatViewModel(private val app: PhoneContainer, val dialogId: String) : Vie
         }
     }
 
-    val canSend: Boolean get() = (input.text.isNotBlank() || images.isNotEmpty()) && !app.turns.busy(dialogId)
+    /**
+     * An answer another device of the user is streaming into this dialog (it can be stopped from here). One the
+     * server has not touched for a while is taken as stale (a server restart can leave one behind).
+     */
+    fun isLiveRemoteAnswer(m: MessageEntity): Boolean =
+        !m.isUser && m.status == MessageStatus.STREAMING && System.currentTimeMillis() - m.updatedAt < STALE_STREAM_MS
 
     fun setText(text: String) {
         input = TextFieldValue(text, TextRange(text.length))
@@ -82,7 +87,7 @@ class ChatViewModel(private val app: PhoneContainer, val dialogId: String) : Vie
         if (app.turns.busy(dialogId)) {
             app.turns.stop(dialogId)
         } else {
-            val streaming = messages.value?.lastOrNull { !it.isUser && it.status == MessageStatus.STREAMING } ?: return
+            val streaming = messages.value?.lastOrNull(::isLiveRemoteAnswer) ?: return
             viewModelScope.launch { core.chat.stop(streaming.id) }
         }
     }
@@ -109,5 +114,8 @@ class ChatViewModel(private val app: PhoneContainer, val dialogId: String) : Vie
 
     companion object {
         const val MAX_IMAGES = 4
+
+        /** The server saves a streaming answer at least every few seconds; this long without a change is stale. */
+        const val STALE_STREAM_MS = 90_000L
     }
 }

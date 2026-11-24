@@ -1,6 +1,7 @@
 package com.fullskat.phone.chat
 
 import android.net.Uri
+import androidx.annotation.VisibleForTesting
 import com.fullskat.core.FullSkatCore
 import com.fullskat.core.chat.ChatProgress
 import com.fullskat.core.net.AttachmentRef
@@ -117,6 +118,10 @@ class ChatTurns(private val core: FullSkatCore, private val scope: CoroutineScop
         jobs.values.forEach { it.cancel() }
         _turns.value = emptyMap()
     }
+
+    /** Shows [turn] for [dialogId] without running anything (screenshots). */
+    @VisibleForTesting
+    internal fun show(dialogId: String, turn: Turn) = set(dialogId, turn)
 
     private fun set(dialogId: String, turn: Turn) = _turns.update { it + (dialogId to turn) }
 

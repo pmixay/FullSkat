@@ -9,7 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -43,6 +42,7 @@ import com.fullskat.phone.ui.settings.ModelScreen
 import com.fullskat.phone.ui.settings.SettingsScreen
 import com.fullskat.phone.ui.settings.SettingsViewModel
 import com.fullskat.phone.ui.theme.PhoneTheme
+import kotlinx.coroutines.flow.filterNotNull
 
 private object Routes {
     const val ONBOARDING = "onboarding"
@@ -69,15 +69,20 @@ fun PhoneRoot(app: PhoneContainer) {
             Box(Modifier.fillMaxSize().background(Ember.background)) // the session loads in a moment
             return@PhoneTheme
         }
-        val start = remember { if (s.signedIn) Routes.DIALOGS else Routes.ONBOARDING }
+        val start = rememberSaveable { if (s.signedIn) Routes.DIALOGS else Routes.ONBOARDING }
         val nav = rememberNavController()
         var figureJson by rememberSaveable { mutableStateOf<String?>(null) }
 
         // Signed out here, or unlinked from another device (sync.onSignedOut, or the session simply lost its token).
         LaunchedEffect(nav) { app.signedOut.collect { nav.toOnboarding() } }
         LaunchedEffect(s.signedIn) { if (!s.signedIn) nav.toOnboarding() }
-        LaunchedEffect(nav) {
-            app.openDialog.collect { id -> if (app.core.session.current().signedIn) nav.navigate(Routes.chat(id)) }
+        // Shared into the app (also on a cold start): open the dialog made for it once signed in.
+        LaunchedEffect(nav, s.signedIn) {
+            if (s.signedIn) {
+                app.pendingShare.filterNotNull().collect { share ->
+                    if (nav.currentBackStackEntry?.arguments?.getString("id") != share.dialogId) nav.navigate(Routes.chat(share.dialogId))
+                }
+            }
         }
 
         val openFigure: (String) -> Unit = { json ->
@@ -91,7 +96,6 @@ fun PhoneRoot(app: PhoneContainer) {
                     OnboardingScreen(viewModel { OnboardingViewModel(app) }) { firstSetup ->
                         if (firstSetup) Toast.makeText(context, R.string.onboarding_first_done, Toast.LENGTH_LONG).show()
                         nav.navigate(Routes.DIALOGS) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
-                        app.pendingShare.value?.let { nav.navigate(Routes.chat(it.dialogId)) }
                     }
                 }
                 composable(Routes.DIALOGS) {

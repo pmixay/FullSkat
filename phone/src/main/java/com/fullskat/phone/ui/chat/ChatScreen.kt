@@ -52,6 +52,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -143,14 +144,23 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
     LaunchedEffect(list.size, lastLength, live?.text?.length, live?.thinking?.length) {
         if (follow && list.isNotEmpty() && !listState.isScrollInProgress) listState.scrollToItem(endIndex)
     }
+    // The keyboard (or the composer growing) shrinks the list: keep the newest message in view.
+    val end by rememberUpdatedState(endIndex)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.viewportSize.height }.collect {
+            if (follow && end > 0 && !listState.isScrollInProgress) listState.scrollToItem(end)
+        }
+    }
     val showJump by remember { derivedStateOf { !follow && listState.canScrollForward } }
 
     val busy = turn is Turn.Uploading || turn is Turn.Waiting || turn is Turn.Answering
-    val remoteStreaming = !busy && list.lastOrNull()?.let { !it.isUser && it.status == MessageStatus.STREAMING } == true
+    val remoteStreaming = !busy && list.lastOrNull()?.let { vm.isLiveRemoteAnswer(it) } == true
+    val hasDraft = vm.input.text.isNotBlank() || vm.images.isNotEmpty()
     val action = when {
-        busy || remoteStreaming -> ComposerAction.STOP
+        busy -> ComposerAction.STOP
         listening -> ComposerAction.LISTENING
-        vm.input.text.isNotBlank() || vm.images.isNotEmpty() -> ComposerAction.SEND
+        hasDraft -> ComposerAction.SEND
+        remoteStreaming -> ComposerAction.STOP
         else -> ComposerAction.MIC
     }
     var menu by remember { mutableStateOf(false) }
