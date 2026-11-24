@@ -74,3 +74,16 @@ def test_pair_success_resets_failures() -> None:
     limiter.record_success("ip")
     limiter.record_failure("ip")
     assert limiter.check("ip").allowed
+
+
+def test_per_hour_window() -> None:
+    clock = FakeClock()
+    limiter = SlidingWindowLimiter(per_minute=None, per_day=None, clock=clock, per_hour=3)
+    for _ in range(3):
+        assert limiter.check("upload", "u").allowed
+        clock.advance(61)
+    denied = limiter.check("upload", "u")
+    assert not denied.allowed and denied.reason == "rate_limited"
+    assert denied.retry_after == 3600 - 3 * 61
+    clock.advance(denied.retry_after)
+    assert limiter.check("upload", "u").allowed

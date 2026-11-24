@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 MINUTE = 60.0
+HOUR = 3_600.0
 DAY = 86_400.0
 
 
@@ -21,7 +22,8 @@ class Decision:
 
 
 class SlidingWindowLimiter:
-    """Allows at most `per_minute` hits in any 60 s window and `per_day` in any 24 h window per key.
+    """Allows at most `per_minute` hits in any 60 s window, `per_hour` in any hour and `per_day` in any 24 h
+    window per key.
 
     Keys are (scope, key) tuples so one limiter can serve several endpoints.
     """
@@ -31,8 +33,10 @@ class SlidingWindowLimiter:
         per_minute: int | None,
         per_day: int | None,
         clock: Callable[[], float] = time.monotonic,
+        per_hour: int | None = None,
     ) -> None:
         self.per_minute = per_minute
+        self.per_hour = per_hour
         self.per_day = per_day
         self._clock = clock
         self._lock = threading.Lock()
@@ -52,11 +56,11 @@ class SlidingWindowLimiter:
             day_retry = minute_retry = 0.0
             if self.per_day is not None and len(hits) >= self.per_day:
                 day_retry = hits[len(hits) - self.per_day] + DAY - now
-            if self.per_minute is not None:
-                minute_horizon = now - MINUTE
-                recent = [t for t in hits if t > minute_horizon]
-                if len(recent) >= self.per_minute:
-                    minute_retry = recent[len(recent) - self.per_minute] + MINUTE - now
+            for limit, span in ((self.per_minute, MINUTE), (self.per_hour, HOUR)):
+                if limit is not None:
+                    recent = [t for t in hits if t > now - span]
+                    if len(recent) >= limit:
+                        minute_retry = max(minute_retry, recent[len(recent) - limit] + span - now)
             retry = max(day_retry, minute_retry)
             if retry > 0:
                 # The daily quota is a usage limit the user should see as such; the per-minute one is a short pause.
@@ -71,7 +75,7 @@ class SlidingWindowLimiter:
 
 
 class PairLimiter:
-    """Per-IP pairing limiter: N attempts/min plus a lockout after consecutive failures."""
+    """Attempts per minute plus a lockout after consecutive failures, per key: sign-up per IP, code claims per user."""
 
     def __init__(
         self,
@@ -89,7 +93,7 @@ class PairLimiter:
         self._locked_until: dict[str, float] = {}
 
     def check(self, ip: str) -> Decision:
-        """Call before attempting to pair. Locked IPs are rejected before the attempt is counted."""
+        """Call before an attempt. Locked keys are rejected before the attempt is counted."""
         now = self._clock()
         with self._lock:
             until = self._locked_until.get(ip)

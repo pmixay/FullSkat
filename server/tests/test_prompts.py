@@ -17,3 +17,14 @@ def test_prompt_allows_math_and_code_markup():
 def test_prompt_keeps_answers_short_by_default():
     prompt = build_system_prompt("en-US")
     assert "at most about 60 words" in prompt
+
+
+def test_prompt_follows_the_asking_device():
+    watch = build_system_prompt("ru-RU", date(2026, 10, 27), device="watch")
+    phone = build_system_prompt("ru-RU", date(2026, 10, 27), device="phone")
+    assert "smartwatch" in watch and "at most about 60 words" in watch
+    assert "phone app" in phone and "at most about 150 words" in phone and "smartwatch" not in phone
+    assert build_system_prompt("en-US", device="other") == build_system_prompt("en-US", device="phone")
+    for prompt in (watch, phone):
+        assert "{intro}" not in prompt and "{length}" not in prompt and "{screen}" not in prompt
+        assert "Current date: 2026-10-27. User locale: ru-RU." in prompt

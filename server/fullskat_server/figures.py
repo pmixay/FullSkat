@@ -49,9 +49,9 @@ _PATH_CHARS = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE+\-.,\s]*$")
 _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 TOOL_DESCRIPTION = (
-    "Draw a figure on the user's round watch screen (about 1.3 inches): function graphs, parametric and polar "
+    "Draw a figure on the user's screen (a round watch of about 1.3 inches, or a phone): function graphs, parametric and polar "
     "curves, data charts (line, scatter, bars, pie), geometry and simple diagrams (points, segments, arrows, "
-    "polygons, circles, arcs, angle marks, boxes, text). The watch renders and animates it natively, in the order "
+    "polygons, circles, arcs, angle marks, boxes, text). The app renders and animates it natively, in the order "
     "of `items`. Coordinates are math-style (y grows upwards) in one plane shared by all items. Expressions use "
     "x (function) or t (parametric, polar; radians), + - * / ^, implicit multiplication (2x), |x|, pi, e and "
     "sin cos tan asin acos atan sinh cosh tanh exp ln log (natural) log10 log2 sqrt cbrt abs sign floor ceil "

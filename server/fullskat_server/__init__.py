@@ -1,3 +1,3 @@
-"""FullSkat server: pairing, speech-to-text and OpenRouter chat relay for the watch app."""
+"""FullSkat server: accounts, code linking, sync, attachments and the chat relay for the phone and watch apps."""
 
 __version__ = "0.1.0"

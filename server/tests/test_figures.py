@@ -15,7 +15,8 @@ from fullskat_server.figures import FigureError, fenced_block, normalize_figure
 from fullskat_server.llm import Figure, KimiLLM, OpenAILLM, OpenRouterLLM, Thinking, Usage
 from fullskat_server.prompts import build_system_prompt
 
-from test_api import FakeLLM, pair, parse_sse
+from helpers import FakeLLM, parse_sse
+from helpers import token_for as pair
 from test_llm import final_message, llm_with
 
 SINE = {"title": "y = sin x", "x_range": [-6.2832, 6.2832], "items": [{"type": "function", "expr": "sin(x)", "label": "$\\sin x$"}]}
