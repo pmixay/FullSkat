@@ -15,6 +15,7 @@ MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"]
 
 
 def settings(tmp_path: Path, **kwargs) -> Settings:
+    kwargs.setdefault("figures", False)  # the draw tool has its own tests (test_figures.py)
     return Settings(_env_file=None, data_dir=tmp_path, openai_api_key="test-key",
                     openai_base_url="http://gateway/v1", **kwargs)
 

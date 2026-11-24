@@ -29,6 +29,7 @@ from fullskat_server.llm import (
 
 
 def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
+    overrides.setdefault("figures", False)  # the draw tool has its own tests (test_figures.py)
     return Settings(_env_file=None, data_dir=tmp_path, anthropic_api_key="test-key", **overrides)
 
 
@@ -372,7 +373,7 @@ async def test_multi_llm_routes_by_model_and_clamps_effort(tmp_path: Path) -> No
     [i async for i in multi.stream([], "claude-haiku-5-5")]
     assert claude.sent["effort"] == "medium"  # model default
     assert [i async for i in multi.stream([], "k3.1-pro", effort="high")] == ["kimi"]
-    assert kimi.sent == {"model": "k3.1-pro", "effort": None, "web_search": None}  # not adjustable
+    assert kimi.sent == {"model": "k3.1-pro", "effort": None, "web_search": None, "figures": None}  # not adjustable
     with pytest.raises(LLMError):
         [i async for i in multi.stream([], "unknown-model")]
 

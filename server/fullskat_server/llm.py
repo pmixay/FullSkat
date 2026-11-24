@@ -15,6 +15,7 @@ import httpx
 
 from .config import Settings
 from .efforts import ModelEfforts, normalize_efforts, pick_default, resolve_effort
+from .figures import DRAW_TOOL, FigureError, anthropic_tool, chat_completions_tool, normalize_figure, responses_tool
 
 log = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ TITLE = "FullSkat"
 WEB_SEARCH_TOOL = "web_search_20250305"
 # A server-side tool loop that hits its iteration cap ends with pause_turn; resume it a few times at most.
 MAX_PAUSE_TURNS = 4
+# Requests one answer may take in all: tool calls the server answers (draw, Kimi's search) plus pause_turn resumes.
+MAX_TOOL_ROUNDS = 8
 
 
 @dataclass(frozen=True)
@@ -43,6 +46,22 @@ class Thinking:
     """A piece of the model's reasoning (summary) text, streamed before or between answer deltas."""
 
     text: str
+
+
+@dataclass(frozen=True)
+class Figure:
+    """A checked `draw` call (see figures.py), streamed to the watch inside the answer where the model drew it."""
+
+    figure: dict[str, Any]
+
+
+def answer_draw(arguments: Any) -> tuple[Figure | None, str]:
+    """Run one `draw` call: the figure to show (None if it cannot be drawn) and the tool result for the model."""
+    try:
+        figure, note = normalize_figure(arguments)
+    except FigureError as exc:
+        return None, f"Not drawn: {exc}. Fix the call or answer in words."
+    return Figure(figure), note
 
 
 class LLMError(Exception):
@@ -129,6 +148,11 @@ def _web_search_enabled(settings: Settings, requested: bool | None) -> bool:
     return settings.web_search and requested is not False
 
 
+def _figures_enabled(settings: Settings, requested: bool | None) -> bool:
+    """FIGURES is the master switch for the draw tool, like WEB_SEARCH: a request can turn it off, never on."""
+    return settings.figures and requested is not False
+
+
 # How long a provider's answer about which efforts a model supports is trusted.
 EFFORTS_TTL = 3600.0
 EFFORTS_RETRY = 60.0
@@ -193,6 +217,8 @@ class _ChatCompletionsLLM:
     label = "upstream"
     # HTTP statuses of the probe that still mean "the key is accepted" (a rate limit, or an endpoint the vendor lacks).
     probe_ok_statuses: tuple[int, ...] = (429,)
+    # Name of a search tool whose calls the client answers by echoing the arguments (Kimi's builtin), "" if none.
+    SEARCH_TOOL = ""
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         self._settings = settings
@@ -305,9 +331,26 @@ class _ChatCompletionsLLM:
         yield result
 
     def _body(
-        self, messages: list[dict[str, Any]], model: str, effort: str | None = None, web_search: bool | None = None
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        effort: str | None = None,
+        web_search: bool | None = None,
+        draw: str = "",
     ) -> dict[str, Any]:
+        """One request. `draw` offers the draw tool: "auto", "none" (calls used up, may not call it) or "" (off)."""
         raise NotImplementedError
+
+    def _search_arg(self, web_search: bool | None, searches: int, first_round: bool) -> bool | None:
+        """The `web_search` argument of `_body` for this round (provider specific)."""
+        return web_search
+
+    def _assistant_extras(self, finished: _Round) -> dict[str, Any]:
+        """Extra fields of an assistant turn with tool calls that is sent back (Kimi wants its reasoning)."""
+        return {}
+
+    def _tool_message(self, call: dict[str, Any], content: str) -> dict[str, Any]:
+        return {"role": "tool", "tool_call_id": call["id"], "content": content}
 
     async def stream(
         self,
@@ -316,22 +359,72 @@ class _ChatCompletionsLLM:
         *,
         effort: str | None = None,
         web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
-        """Yield text deltas (str), Thinking pieces and, if the upstream reports it, a final Usage item.
+        figures: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Figure | Usage]:
+        """Yield text deltas (str), Thinking pieces, Figures and, if the upstream reports it, a final Usage item.
 
-        `effort` is the final level (already checked against the model); None omits it.
+        `effort` is the final level (already checked against the model); None omits it. Tool calls the server
+        answers itself (draw; Kimi's search) are answered and the model is asked again, at most MAX_TOOL_ROUNDS times.
         """
         if not self._api_key():
             raise LLMError("upstream_auth", self._missing_key_message())
-        usage_seen = False
+        conversation: list[dict[str, Any]] = list(messages)
+        can_draw = _figures_enabled(self._settings, figures)
+        searches = drawn = 0
         prompt_tokens = completion_tokens = 0
-        async for item in self._round(self._body(messages, model, effort, web_search)):
-            if isinstance(item, _Round):
-                usage_seen, prompt_tokens, completion_tokens = item.has_usage, item.prompt_tokens, item.completion_tokens
-            else:
-                yield item
+        usage_seen = False
+        for round_index in range(MAX_TOOL_ROUNDS):
+            search = self._search_arg(web_search, searches, round_index == 0)
+            draw = "" if not can_draw else ("auto" if drawn < self._settings.figures_max_per_answer else "none")
+            body = self._body(conversation, model, effort, search, draw)
+            finished = _Round()
+            try:
+                async for item in self._round(body):
+                    if isinstance(item, _Round):
+                        finished = item
+                    else:
+                        yield item
+            except LLMError as exc:
+                if self._drop_search(body, exc, finished):
+                    continue
+                raise
+            usage_seen = usage_seen or finished.has_usage
+            prompt_tokens += finished.prompt_tokens
+            completion_tokens += finished.completion_tokens
+            if finished.finish_reason not in ("tool_calls", "function_call") or not finished.tool_calls:
+                break
+            replies: list[dict[str, Any]] = []
+            for number, call in enumerate(finished.tool_calls):
+                call["id"] = call["id"] or f"call_{round_index}_{number}"
+                if call["name"] == DRAW_TOOL and can_draw:
+                    drawn += 1
+                    figure, note = answer_draw(call["arguments"])
+                    if figure is not None:
+                        yield figure
+                    replies.append(self._tool_message(call, note))
+                elif self.SEARCH_TOOL and call["name"] == self.SEARCH_TOOL:
+                    searches += 1  # the provider runs the search itself: the client only echoes the arguments back
+                    replies.append(self._tool_message(call, call["arguments"]))
+                else:
+                    break  # a tool we do not run: keep what was said
+            if len(replies) != len(finished.tool_calls):
+                break
+            conversation.append({
+                "role": "assistant",
+                "content": finished.content,
+                "tool_calls": [
+                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
+                    for c in finished.tool_calls
+                ],
+                **self._assistant_extras(finished),
+            })
+            conversation.extend(replies)
         if usage_seen:
             yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
+
+    def _drop_search(self, body: dict[str, Any], exc: LLMError, finished: _Round) -> bool:
+        """Whether a failed round should be retried without the search tool (Kimi); False re-raises the error."""
+        return False
 
 
 class EffortCatalog:
@@ -399,8 +492,18 @@ class OpenRouterLLM(_ChatCompletionsLLM):
     def _headers(self) -> dict[str, str]:
         return {**super()._headers(), "HTTP-Referer": REFERER, "X-Title": TITLE}
 
+    def _search_arg(self, web_search: bool | None, searches: int, first_round: bool) -> bool | None:
+        # The web plugin searches on every request it is on: only the first one, the rounds after a draw call
+        # just finish the answer and should not pay for another search.
+        return web_search if first_round else False
+
     def _body(
-        self, messages: list[dict[str, Any]], model: str, effort: str | None = None, web_search: bool | None = None
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        effort: str | None = None,
+        web_search: bool | None = None,
+        draw: str = "",
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
@@ -409,6 +512,10 @@ class OpenRouterLLM(_ChatCompletionsLLM):
             "max_tokens": self._settings.openrouter_max_tokens,
             "usage": {"include": True},
         }
+        if draw:
+            body["tools"] = [chat_completions_tool()]
+            if draw == "none":
+                body["tool_choice"] = "none"
         reasoning: dict[str, Any] = {}
         if effort:
             reasoning["effort"] = effort
@@ -507,12 +614,17 @@ class OpenAILLM(_ChatCompletionsLLM):
         return None
 
     def _body(
-        self, messages: list[dict[str, Any]], model: str, effort: str | None = None, web_search: bool | None = None
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        effort: str | None = None,
+        web_search: bool | None = None,
+        draw: str = "",
     ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": model,
-            "instructions": "\n\n".join(m["content"] for m in messages if m["role"] == "system"),
-            "input": [m for m in messages if m["role"] != "system"],
+            "instructions": "\n\n".join(m["content"] for m in messages if m.get("role") == "system"),
+            "input": [m for m in messages if m.get("role") != "system"],
             "stream": True,
             "store": False,
             "max_output_tokens": self._settings.openai_max_tokens,
@@ -524,20 +636,60 @@ class OpenAILLM(_ChatCompletionsLLM):
             reasoning["summary"] = "auto"
         if reasoning:
             body["reasoning"] = reasoning
+        tools: list[dict[str, Any]] = []
         if _web_search_enabled(self._settings, web_search):
-            body["tools"] = [{"type": "web_search"}]
+            tools.append({"type": "web_search"})
+        if draw:
+            tools.append(responses_tool())
+            if draw == "none":
+                body["tool_choice"] = "none"
+        if tools:
+            body["tools"] = tools
         return body
 
     async def stream(
         self, messages: list[dict[str, str]], model: str, *,
-        effort: str | None = None, web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
+        effort: str | None = None, web_search: bool | None = None, figures: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Figure | Usage]:
+        """Translate Responses events to watch items. A response that ends in draw calls is answered and continued:
+        the follow-up input repeats the conversation plus the text so far, the calls and their outputs (store=false,
+        so nothing can be referenced by id)."""
         if not self._api_key().strip():
             raise LLMError("upstream_auth", "OPENAI_API_KEY is not configured on the server")
+        conversation: list[dict[str, Any]] = list(messages)
+        can_draw = _figures_enabled(self._settings, figures)
+        drawn = input_tokens = output_tokens = 0
+        for _ in range(MAX_TOOL_ROUNDS):
+            draw = "" if not can_draw else ("auto" if drawn < self._settings.figures_max_per_answer else "none")
+            finished = _ResponseRound()
+            async for item in self._response_round(self._body(conversation, model, effort, web_search, draw)):
+                if isinstance(item, _ResponseRound):
+                    finished = item
+                else:
+                    yield item
+            input_tokens += finished.input_tokens
+            output_tokens += finished.output_tokens
+            calls = [c for c in finished.calls if c.get("name") == DRAW_TOOL] if can_draw else []
+            if not calls:
+                break
+            if finished.text:
+                conversation.append({"role": "assistant", "content": finished.text})
+            for call in calls:
+                drawn += 1
+                figure, note = answer_draw(call.get("arguments"))
+                if figure is not None:
+                    yield figure
+                call_id = str(call.get("call_id") or "")
+                conversation.append({"type": "function_call", "call_id": call_id, "name": DRAW_TOOL,
+                                     "arguments": str(call.get("arguments") or "")})
+                conversation.append({"type": "function_call_output", "call_id": call_id, "output": note})
+        yield Usage(input_tokens, output_tokens)
+
+    async def _response_round(self, body: dict[str, Any]) -> AsyncIterator[str | Thinking | _ResponseRound]:
+        """Stream one response: text/Thinking items, then a `_ResponseRound` with its function calls and usage."""
+        result = _ResponseRound()
         try:
-            async with self._client.stream(
-                "POST", self._url(), headers=self._headers(), json=self._body(messages, model, effort, web_search)
-            ) as response:
+            async with self._client.stream("POST", self._url(), headers=self._headers(), json=body) as response:
                 if response.status_code >= 400:
                     message = extract_upstream_message(await response.aread())
                     raise LLMError(error_code_for_status(response.status_code, message), message,
@@ -546,17 +698,28 @@ class OpenAILLM(_ChatCompletionsLLM):
                     kind = event.get("type")
                     if kind in ("response.output_text.delta", "response.refusal.delta"):
                         if event.get("delta"):
+                            result.text += str(event["delta"])
                             yield str(event["delta"])
                     elif kind == "response.reasoning_summary_text.delta":
                         if self._settings.show_thinking and event.get("delta"):
                             yield Thinking(str(event["delta"]))
+                    elif kind == "response.output_item.done":
+                        item = event.get("item") or {}
+                        if item.get("type") == "function_call":
+                            result.add_call(item)
                     elif kind == "response.completed":
-                        usage = (event.get("response") or {}).get("usage") or {}
-                        yield Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
+                        done = event.get("response") or {}
+                        usage = done.get("usage") or {}
+                        result.input_tokens = int(usage.get("input_tokens") or 0)
+                        result.output_tokens = int(usage.get("output_tokens") or 0)
+                        for item in done.get("output") or []:
+                            if isinstance(item, dict) and item.get("type") == "function_call":
+                                result.add_call(item)
+                        yield result
                         return
                     elif kind in ("error", "response.failed", "response.incomplete"):
-                        result = event.get("response") or event
-                        error = result.get("error") or result.get("incomplete_details") or result
+                        failed = event.get("response") or event
+                        error = failed.get("error") or failed.get("incomplete_details") or failed
                         message = str(error.get("message") or error.get("reason") or "OpenAI response failed")
                         code = str(error.get("code") or "")
                         status = {"invalid_api_key": 401, "authentication_error": 401,
@@ -570,6 +733,20 @@ class OpenAILLM(_ChatCompletionsLLM):
             raise LLMError("upstream_error", "invalid OpenAI response stream") from exc
         # Never report a truncated stream as a successful watch answer.
         raise LLMError("upstream_error", "OpenAI stream ended before response.completed")
+
+
+@dataclass
+class _ResponseRound:
+    """What one Responses stream added up to: its text, function calls (unique by call_id) and token usage."""
+
+    text: str = ""
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def add_call(self, item: dict[str, Any]) -> None:
+        if not any(c.get("call_id") == item.get("call_id") for c in self.calls):
+            self.calls.append(item)
 
 
 async def _response_events(response: httpx.Response) -> AsyncIterator[dict[str, Any]]:
@@ -597,6 +774,7 @@ class KimiLLM(_ChatCompletionsLLM):
 
     label = "Kimi Code"
     WEB_SEARCH = "$web_search"
+    SEARCH_TOOL = WEB_SEARCH
     # Kimi Code documents no /models endpoint for keys, so a 404 there is no reason to call the key bad.
     probe_ok_statuses = (404, 405, 429)
 
@@ -618,8 +796,14 @@ class KimiLLM(_ChatCompletionsLLM):
         return f"{self._settings.kimi_base_url.rstrip('/')}/models"
 
     def _body(
-        self, messages: list[dict[str, Any]], model: str, effort: str | None = None, web_search: bool | None = None
+        self,
+        messages: list[dict[str, Any]],
+        model: str,
+        effort: str | None = None,
+        web_search: bool | None = None,
+        draw: str = "",
     ) -> dict[str, Any]:
+        """`web_search` here means "offer the builtin search tool in this request" (see `_search_arg`)."""
         body: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -631,9 +815,39 @@ class KimiLLM(_ChatCompletionsLLM):
             body["thinking"] = {"type": "disabled"}
         elif effort:
             body["reasoning_effort"] = effort
+        tools: list[dict[str, Any]] = []
         if web_search:
-            body["tools"] = [{"type": "builtin_function", "function": {"name": self.WEB_SEARCH}}]
+            tools.append({"type": "builtin_function", "function": {"name": self.WEB_SEARCH}})
+        if draw == "auto":  # used up: withheld, like the search tool (thinking mode takes no tool_choice but auto)
+            tools.append(chat_completions_tool())
+        if tools:
+            body["tools"] = tools
         return body
+
+    def _search_arg(self, web_search: bool | None, searches: int, first_round: bool) -> bool | None:
+        """Each answered search counts against WEB_SEARCH_MAX_USES; when they are used up the tool is withheld."""
+        return (
+            _web_search_enabled(self._settings, web_search)
+            and not self._search_rejected
+            and searches < self._settings.web_search_max_uses
+        )
+
+    def _assistant_extras(self, finished: _Round) -> dict[str, Any]:
+        # Kimi wants its reasoning sent back with tool calls
+        return {"reasoning_content": finished.reasoning} if finished.reasoning else {}
+
+    def _tool_message(self, call: dict[str, Any], content: str) -> dict[str, Any]:
+        return {"role": "tool", "tool_call_id": call["id"], "name": call["name"], "content": content}
+
+    def _drop_search(self, body: dict[str, Any], exc: LLMError, finished: _Round) -> bool:
+        """The endpoint may not offer the builtin search tool (Kimi Code does not document it): drop it, remember
+        that, and ask again. Nothing was yielded yet: HTTP errors come first."""
+        offered = any(t.get("type") == "builtin_function" for t in body.get("tools", []))
+        if offered and exc.code == "upstream_error" and not finished.content:
+            log.warning("Kimi rejected the $web_search tool (%s); continuing without web search", exc.message)
+            self._search_rejected = True
+            return True
+        return False
 
     async def usage(self) -> UsageLeft | None:
         """Quota left of the Kimi Code membership, from GET <base>/usages (best effort: not in the public docs)."""
@@ -673,68 +887,6 @@ class KimiLLM(_ChatCompletionsLLM):
                 return ModelEfforts(supported, pick_default(supported, settings.kimi_default_effort, catalog_default))
         supported = normalize_efforts(settings.kimi_efforts.split(","))
         return ModelEfforts(supported, pick_default(supported, settings.kimi_default_effort))
-
-    async def stream(
-        self,
-        messages: list[dict[str, str]],
-        model: str,
-        *,
-        effort: str | None = None,
-        web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
-        """Like the base stream, but answers the model's `$web_search` calls and asks again.
-
-        Kimi runs the search itself: the client only echoes the call's arguments back as the tool result.
-        Each answered call counts against WEB_SEARCH_MAX_USES; when they are used up the tool is withheld.
-        """
-        if not self._api_key():
-            raise LLMError("upstream_auth", self._missing_key_message())
-        conversation: list[dict[str, Any]] = list(messages)
-        can_search = _web_search_enabled(self._settings, web_search) and not self._search_rejected
-        searches = 0
-        prompt_tokens = completion_tokens = 0
-        usage_seen = False
-        while True:
-            body = self._body(conversation, model, effort, can_search and searches < self._settings.web_search_max_uses)
-            finished = _Round()
-            try:
-                async for item in self._round(body):
-                    if isinstance(item, _Round):
-                        finished = item
-                    else:
-                        yield item
-            except LLMError as exc:
-                # The endpoint may not offer the builtin search tool (Kimi Code does not document it): drop it,
-                # remember that, and ask again without tools. Nothing was yielded yet: HTTP errors come first.
-                if "tools" in body and exc.code == "upstream_error" and not finished.content:
-                    log.warning("Kimi rejected the $web_search tool (%s); continuing without web search", exc.message)
-                    self._search_rejected = True
-                    can_search = False
-                    continue
-                raise
-            usage_seen = usage_seen or finished.has_usage
-            prompt_tokens += finished.prompt_tokens
-            completion_tokens += finished.completion_tokens
-            calls = [c for c in finished.tool_calls if c["name"] == self.WEB_SEARCH]
-            if finished.finish_reason != "tool_calls" or not calls or searches >= self._settings.web_search_max_uses:
-                break
-            searches += len(calls)
-            assistant: dict[str, Any] = {
-                "role": "assistant",
-                "content": finished.content,
-                "tool_calls": [
-                    {"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": c["arguments"]}}
-                    for c in calls
-                ],
-            }
-            if finished.reasoning:
-                assistant["reasoning_content"] = finished.reasoning  # Kimi wants its reasoning sent back with tool calls
-            conversation.append(assistant)
-            conversation.extend(
-                {"role": "tool", "tool_call_id": c["id"], "name": c["name"], "content": c["arguments"]} for c in calls
-            )
-        if usage_seen:
-            yield Usage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
 def _supports(capability: Any, level: str) -> bool:
@@ -816,6 +968,7 @@ class AnthropicLLM:
         model: str,
         effort: str | None = None,
         web_search: bool | None = None,
+        figures: bool | None = None,
     ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": model,
@@ -827,10 +980,13 @@ class AnthropicLLM:
             request["thinking"] = {"type": "adaptive", "display": "summarized"}
         if effort:
             request["output_config"] = {"effort": effort}
+        tools: list[dict[str, Any]] = []
         if _web_search_enabled(self._settings, web_search):
-            request["tools"] = [
-                {"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": self._settings.web_search_max_uses}
-            ]
+            tools.append({"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": self._settings.web_search_max_uses})
+        if _figures_enabled(self._settings, figures):
+            tools.append(anthropic_tool())
+        if tools:
+            request["tools"] = tools
         return request
 
     async def stream(
@@ -840,17 +996,24 @@ class AnthropicLLM:
         *,
         effort: str | None = None,
         web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
-        """Yield text deltas (str), Thinking pieces and a final Usage item. Raises LLMError like OpenRouterLLM."""
+        figures: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Figure | Usage]:
+        """Yield text deltas (str), Thinking pieces, Figures and a final Usage item. Raises LLMError like OpenRouterLLM.
+
+        Draw calls end a round with stop_reason "tool_use": the figures are yielded, the results sent back and the
+        model asked again; once FIGURES_MAX_PER_ANSWER calls are used up the tool stays defined but tool_choice is "none".
+        """
         if not self._settings.anthropic_api_key:
             raise LLMError("upstream_auth", "ANTHROPIC_API_KEY is not configured on the server")
         system, conversation = _anthropic_conversation(messages)
         if not conversation:
             raise LLMError("upstream_error", "no user message to answer")
-        request = self._request(system, conversation, model, effort, web_search)
+        request = self._request(system, conversation, model, effort, web_search, figures)
+        can_draw = _figures_enabled(self._settings, figures)
+        drawn = pauses = 0
         prompt_tokens = completion_tokens = 0
         try:
-            for _ in range(MAX_PAUSE_TURNS):
+            for _ in range(MAX_TOOL_ROUNDS):
                 async with self._client.messages.stream(**request) as stream:
                     async for event in stream:
                         if event.type != "content_block_delta":
@@ -870,10 +1033,34 @@ class AnthropicLLM:
                 completion_tokens += usage.output_tokens
                 if final.stop_reason == "refusal":
                     raise LLMError("upstream_error", "the model declined to answer this request")
-                if final.stop_reason != "pause_turn":
+                if final.stop_reason == "pause_turn" and pauses < MAX_PAUSE_TURNS - 1:
+                    # Resume the paused server-side tool loop: send the assistant turn back as it is.
+                    pauses += 1
+                    request["messages"] = [*request["messages"], {"role": "assistant", "content": final.content}]
+                    continue
+                calls = [b for b in final.content if getattr(b, "type", "") == "tool_use"]
+                if final.stop_reason != "tool_use" or not calls or not can_draw:
                     break
-                # Resume the paused server-side tool loop: send the assistant turn back as it is.
-                request["messages"] = [*request["messages"], {"role": "assistant", "content": final.content}]
+                results: list[dict[str, Any]] = []
+                for call in calls:
+                    if call.name != DRAW_TOOL:
+                        results.append({"type": "tool_result", "tool_use_id": call.id, "content": "unknown tool", "is_error": True})
+                        continue
+                    drawn += 1
+                    figure, note = answer_draw(call.input)
+                    if figure is not None:
+                        yield figure
+                    result: dict[str, Any] = {"type": "tool_result", "tool_use_id": call.id, "content": note}
+                    if figure is None:
+                        result["is_error"] = True
+                    results.append(result)
+                request["messages"] = [
+                    *request["messages"],
+                    {"role": "assistant", "content": final.content},
+                    {"role": "user", "content": results},
+                ]
+                if drawn >= self._settings.figures_max_per_answer:
+                    request["tool_choice"] = {"type": "none"}  # tool_use blocks in history need the tool still defined
         except anthropic.APIStatusError as exc:
             log.warning("Anthropic returned %s: %s", exc.status_code, exc.message)
             message = exc.message or "upstream request failed"
@@ -1012,7 +1199,8 @@ class MultiLLM:
         *,
         effort: str | None = None,
         web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
+        figures: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Figure | Usage]:
         """Pick the final effort for the model (requested, else its default, clamped to what it supports)."""
         name, provider = self._provider(model)
         if name not in await self.working_providers():
@@ -1021,7 +1209,7 @@ class MultiLLM:
         info = await self.efforts(model)
         chosen = resolve_effort(effort, info.efforts) or info.default or None
         try:
-            async for item in provider.stream(messages, model, effort=chosen, web_search=web_search):
+            async for item in provider.stream(messages, model, effort=chosen, web_search=web_search, figures=figures):
                 yield item
         except LLMError as exc:
             if exc.code == "upstream_auth":

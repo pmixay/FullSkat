@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
     # Stream the model's reasoning summary to the watch (SSE `thinking` events)
     show_thinking: bool = True
+    # Let the model draw figures (graphs, charts, geometry) with the `draw` tool; the watch renders them (see figures.py)
+    figures: bool = True
+    figures_max_per_answer: int = Field(default=3, ge=1, le=8)
 
     # Anthropic (chat)
     anthropic_api_key: str = ""

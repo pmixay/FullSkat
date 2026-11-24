@@ -16,7 +16,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .auth import InvalidPasscode, StateStore, TokenRecord, token_hash
 from .config import Settings, load_settings
-from .llm import LLMError, Thinking, Usage, create_llm, trim_history
+from .figures import fenced_block
+from .llm import Figure, LLMError, Thinking, Usage, create_llm, trim_history
 from .prompts import build_system_prompt
 from .ratelimit import Decision, PairLimiter, SlidingWindowLimiter
 
@@ -71,6 +72,7 @@ class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1)
     effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     web_search: bool | None = None
+    figures: bool | None = None
 
 
 # ---- helpers --------------------------------------------------------------
@@ -109,6 +111,15 @@ async def _model_info(app: FastAPI) -> dict[str, Any]:
         "model_efforts": {model: e.to_json() for model, e in efforts.items()},
         "providers": await app.state.llm.providers_info(),
     }
+
+
+def _block_separator(text: str) -> str:
+    """What goes between the answer so far and a block that must start on a fresh line after a blank one."""
+    if not text.strip():
+        return ""
+    if text.endswith("\n\n"):
+        return ""
+    return "\n" if text.endswith("\n") else "\n\n"
 
 
 def _limits(settings: Settings) -> dict[str, int]:
@@ -210,6 +221,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "server_name": settings.server_name,
             **await _model_info(app),
             "web_search": settings.web_search,
+            "figures": settings.figures,
         }
         return JSONResponse(payload, status_code=201 if result.first_setup else 200)
 
@@ -221,6 +233,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "device_name": record.device_name,
             **await _model_info(app),
             "web_search": settings.web_search,
+            "figures": settings.figures,
             "limits": _limits(settings),
         }
 
@@ -255,16 +268,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.max_history_messages,
             settings.max_history_chars,
         )
-        messages = [{"role": "system", "content": build_system_prompt(body.locale)}, *history]
+        figures = settings.figures and body.figures is not False
+        messages = [{"role": "system", "content": build_system_prompt(body.locale, figures=figures)}, *history]
         log.info("chat: device=%s model=%s messages=%d dialog=%s", record.device_id, model, len(history), body.dialog_id)
 
         async def events() -> AsyncIterator[str]:
             parts: list[str] = []
             thinking_parts: list[str] = []
             usage = Usage(prompt_tokens=0, completion_tokens=0)
+            after_figure = False
             try:
                 async for item in app.state.llm.stream(
-                    messages, model, effort=body.effort, web_search=body.web_search
+                    messages, model, effort=body.effort, web_search=body.web_search, figures=body.figures
                 ):
                     if isinstance(item, Usage):
                         usage = item
@@ -273,8 +288,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         thinking_parts.append(item.text)
                         yield _sse("thinking", {"text": item.text})
                         continue
-                    parts.append(item)
-                    yield _sse("delta", {"text": item})
+                    if isinstance(item, Figure):
+                        # A figure is a fenced block of its own, one delta, on its own lines between paragraphs.
+                        text = _block_separator("".join(parts)) + fenced_block(item.figure)
+                        after_figure = True
+                    else:
+                        text = item
+                        if after_figure and item.strip():
+                            text = ("\n" if item.startswith("\n") else "\n\n") + item.lstrip(" ")
+                            after_figure = False
+                        elif after_figure:
+                            continue  # whitespace right after a figure: the separator comes with the next text
+                    parts.append(text)
+                    yield _sse("delta", {"text": text})
             except LLMError as exc:
                 payload: dict[str, Any] = {"error": exc.code, "message": exc.message}
                 if exc.retry_after:

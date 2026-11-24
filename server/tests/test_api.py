@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from fullskat_server.app import create_app
 from fullskat_server.config import Settings
 from fullskat_server.efforts import ModelEfforts
-from fullskat_server.llm import LLMError, Thinking, Usage
+from fullskat_server.llm import Figure, LLMError, Thinking, Usage
 
 
 class FakeLLM:
@@ -17,7 +17,7 @@ class FakeLLM:
 
     def __init__(
         self,
-        deltas: list[str | Thinking] | None = None,
+        deltas: list[str | Thinking | Figure] | None = None,
         error: LLMError | None = None,
         efforts: dict[str, ModelEfforts] | None = None,
         model_list: list[str] | None = None,
@@ -28,6 +28,7 @@ class FakeLLM:
         self.error = error
         self.requests: list[tuple[list[dict[str, str]], str]] = []
         self.options: list[dict[str, object]] = []
+        self.figure_flags: list[bool | None] = []
 
     async def models(self) -> tuple[str, list[str]]:
         return (self.model_list[0] if self.model_list else ""), self.model_list
@@ -45,9 +46,11 @@ class FakeLLM:
         *,
         effort: str | None = None,
         web_search: bool | None = None,
-    ) -> AsyncIterator[str | Thinking | Usage]:
+        figures: bool | None = None,
+    ) -> AsyncIterator[str | Thinking | Figure | Usage]:
         self.requests.append((messages, model))
         self.options.append({"effort": effort, "web_search": web_search})
+        self.figure_flags.append(figures)
         if self.error:
             raise self.error
         for delta in self.deltas:
@@ -186,6 +189,7 @@ async def test_me(client: AsyncClient) -> None:
             for m in ("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1")
         },
         "web_search": True,
+        "figures": True,
         "limits": {"chat_per_min": 20, "chat_per_day": 500},
     }
 
