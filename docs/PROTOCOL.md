@@ -21,7 +21,10 @@ recogniser); no audio is ever sent to the server.
   `POST /v1/link/start` and `GET /v1/link/status`. A token belongs to one **device** of one **user**.
 * Errors: `{"error": "<code>", "message": "<human text>"}` with an HTTP status. Rate-limit rejections are
   `429` with a `Retry-After` header (seconds). `401 invalid_token` means the device was unlinked or the
-  token revoked: the client forgets its session and shows its setup screen.
+  token revoked: the client forgets its session and shows its setup screen (`401 missing_token` without a
+  token). Common codes besides the ones named below: `400 invalid_request` (malformed body, query or value),
+  `404 not_found`, `409 conflict` (an id that belongs to someone else), `413 payload_too_large`.
+* JSON bodies of the small endpoints (everything but chat and attachments) are at most 16 KiB.
 
 ## Users and devices
 
@@ -38,15 +41,19 @@ A **user** is a person; each has their own dialogs, images and preferences. A **
 {"passcode": "1234", "name": "Миша", "device_id": "uuid", "device_name": "Pixel 9", "device_kind": "phone"}
 ```
 
-* The passcode (4–8 digits) is the server's invitation: whoever knows it may create an account. The very
-  first registration on a fresh server **sets** it (`201`, `first_setup: true`); later ones must match it
-  (`401 invalid_passcode` otherwise).
-* Creates a new user named `name` (1–40 characters) with this device, and returns `201` (`200` when the
-  `device_id` was already registered: the same device and user, a fresh token; reinstalling keeps the account
-  only if the install kept its device id).
+* The passcode (4–8 digits, else `400 invalid_passcode_format`) is the server's invitation: whoever knows it
+  may create an account. The very first registration on a fresh server **sets** it (`201`,
+  `first_setup: true`); later ones must match it (`401 invalid_passcode` otherwise).
+* Creates a new user named `name` (1–40 characters after collapsing whitespace) with this device, and returns
+  `201` (`200` when the `device_id` was already registered: the same device and user, a fresh token, the old
+  token stops working; the user is not renamed, the device's name and kind are updated; reinstalling keeps
+  the account only if the install kept its device id).
+* `device_id` 1–128 characters, `device_name` up to 128 (may be empty), `device_kind` `phone` (default),
+  `watch` or `other`. Other malformed bodies are `400 invalid_request`.
 * Response: `{"token": "...", "first_setup": false, "server_name": "FullSkat", "user": User, "device": Device,
   ...model info}` (see [Model info](#model-info)).
-* Per-IP limits: 5 attempts per minute; 10 consecutive failures lock the IP for 15 minutes (`429 locked`).
+* Per-IP limits: 5 attempts per minute (malformed requests count); 10 consecutive wrong passcodes lock the IP
+  for 15 minutes (`429 locked`).
 
 `User` = `{"id": "u_...", "name": "Миша", "created_at": ms}`;
 `Device` = `{"id": "<device_id>", "kind": "phone", "name": "Pixel 9", "created_at": ms, "last_seen": ms, "current": true}`.
@@ -64,41 +71,52 @@ signed-in device enters.
      (window = `floor(unix_seconds / 30)`); `expires_in` is the seconds left in the current window, `period`
      the window length. The device shows it with a countdown ring.
    * `link_id` is a secret only this device knows (256-bit, URL-safe). A pending link expires after 10
-     minutes without a status poll. Per-IP limit: 20 starts per minute.
-2. It waits: `GET /v1/link/status?link_id=...&wait=25` (no auth; long-poll, `wait` 0–25 seconds). The
-   server answers as soon as something changes, or when `wait` runs out:
+     minutes without a status poll. Per-IP limit: 20 starts per minute. `device_kind` defaults to `watch`.
+   * Codes are derived per link and window from a server secret (HMAC-SHA256); two pending links never show
+     the same code in the same window, and a code never changes within its window.
+2. It waits: `GET /v1/link/status?link_id=...&wait=25` (no auth; long-poll, `wait` 0–25 seconds, default 0,
+   larger values count as 25). The server answers as soon as something changes, or when `wait` runs out:
    * `{"status": "pending", "code": "XA3M9Q", "expires_in": 30, "period": 30}`: the code rotated (or the
-     wait ran out); show the new code and restart the ring.
+     wait ran out); show the new code and restart the ring. A poll answers at once when the device has not
+     been told the current window's code yet (for example when it polls again only after a rotation), so
+     re-polling right after each answer always shows the right code.
    * `{"status": "linked", "token": "...", "server_name": "...", "user": User, "device": Device, ...model
      info}`: done. The token is delivered once; afterwards the link is gone.
-   * `404 link_expired`: start over.
-3. On the phone, the signed-in user types the code: `POST /v1/link/claim` `{"code": "K7Q2ZP"}` →
-   `200 {"device": Device}` (the new device, now part of this user), or `404 invalid_code` (wrong or expired
-   code: the code of the current window is accepted, and the previous window's during the first 5 seconds
-   after a rotation). Limits per user: 10 attempts per minute, 5 consecutive failures lock claiming for 5
-   minutes (`429 locked`).
+   * `404 link_expired`: start over (also when the link was claimed but the device was unlinked again before
+     it collected its token).
+3. On the phone, the signed-in user types the code: `POST /v1/link/claim` `{"code": "K7Q2ZP"}` (case,
+   spaces and dashes do not matter) → `200 {"device": Device}` (the new device, now part of this user), or
+   `404 invalid_code` (wrong, malformed or expired code: the code of the current window is accepted, and the
+   code the link showed in the previous window during the first 5 seconds after a rotation). A device cannot
+   claim a link started with its own `device_id` (`400 invalid_request`). Limits per user: 10 attempts per
+   minute, 5 consecutive failures lock claiming for 5 minutes (`429 locked`).
 
-A device that is linked again with the same `device_id` keeps its record and gets a new token (the old
-one stops working).
+A device that is linked again with the same `device_id` keeps its record (`created_at`; it moves to the
+claiming user) and gets a new token; the old one stops working as soon as the code is claimed.
 
 ### Devices and the session
 
 * `GET /v1/me` → `{"user": User, "device": Device, "server_name": "...", ...model info, "web_search": true,
   "figures": true, "limits": {"chat_per_min": 20, "chat_per_day": 500}}`.
-* `GET /v1/devices` → `{"devices": [Device, ...]}` (all devices of the user, `current` marks the caller).
+* `GET /v1/devices` → `{"devices": [Device, ...]}` (all devices of the user, oldest first, `current` marks
+  the caller).
 * `DELETE /v1/devices/{device_id}` → `204`: unlinks a device of the same user (its token stops working;
-  it falls back to its setup screen). Unlinking the calling device is signing out.
-* `PATCH /v1/me` `{"name": "Михаил"}` → renames the user.
+  it falls back to its setup screen). Unlinking the calling device is signing out. `404 not_found` for a
+  device that is not the user's.
+* `PATCH /v1/me` `{"name": "Михаил"}` → `{"user": User}`: renames the user (1–40 characters).
+* `last_seen` is refreshed at most once a minute.
 
 ## Preferences
 
 Per user, shared by all their devices: `{"model": "claude-haiku-5-5" | null, "effort": "high" | null,
 "web_search": true, "figures": true}`. `null` (or a missing key) means the server default.
 
-* `GET /v1/prefs` → `{"prefs": {...}, "updated_at": ms}`.
+* `GET /v1/prefs` → `{"prefs": {...}, "updated_at": ms}` (every key present; all `null` with `updated_at: 0`
+  before the first change).
 * `PUT /v1/prefs` with any subset of the keys → the merged `{"prefs": {...}, "updated_at": ms}`. Unknown keys
-  are ignored; invalid values are `400 invalid_request`. Changing prefs counts as a change for
-  [sync](#sync) and [events](#live-events).
+  are ignored; invalid values are `400 invalid_request` (`model` must be one the server is configured to
+  offer, `effort` one of the levels, `web_search` / `figures` booleans; `null` resets a key). Changing prefs
+  counts as a change for [sync](#sync) and [events](#live-events); a PUT that changes nothing does not.
 
 Settings that belong to one device (vibration, the watch's tile) stay on that device.
 
@@ -121,25 +139,34 @@ The server is the source of truth; each device keeps a local copy and catches up
   "thinking": "reasoning summary, empty if none",
   "sources": [{"url": "https://...", "title": "..."}],
   "attachments": [{"id": "a_...", "mime": "image/jpeg", "width": 1568, "height": 1176}],
-  "model": "claude-haiku-5-5", "status": "done" | "streaming" | "error",
+  "model": "claude-haiku-5-5", "status": "done" | "streaming" | "error", "error": "",
   "created_at": ms, "updated_at": ms, "deleted": false, "seq": 42
 }
 ```
 
 * `status`: `streaming` while the model is still answering (the content grows; see [chat](#chat));
-  `error` when the answer failed: `content` keeps what arrived, `error` holds the code.
-* A deleted dialog or message stays as a tombstone (`deleted: true`, content emptied) so other devices
-  learn about it.
+  `error` when the answer failed: `content` keeps what arrived, `error` holds the code (empty string
+  otherwise). User messages are always `done`; `model` is empty for them.
+* A deleted dialog or message stays as a tombstone (`deleted: true`; title, content, thinking, sources,
+  attachments and error emptied) so other devices learn about it.
+* IDs are 1–64 characters of `A-Z a-z 0-9 - _` (`400 invalid_request` otherwise). An id another user already
+  uses is `409 conflict`; a dialog or message of another user is `404 not_found`, as is an unknown one.
 
 Changes:
 
 * `POST /v1/dialogs` `{"id": "uuid", "title": "", "created_at": ms}` → `201 Dialog` (`200` with the existing
-  dialog if this user already has that id: creating is idempotent).
-* `PATCH /v1/dialogs/{id}` `{"title": "..."}` → `Dialog`.
-* `DELETE /v1/dialogs/{id}` → `204` (the dialog and its messages become tombstones).
-* `DELETE /v1/messages/{id}` → `204`.
+  dialog, tombstone included, if this user already has that id: creating is idempotent). `title` at most 200
+  characters; `created_at` optional (default: now).
+* `PATCH /v1/dialogs/{id}` `{"title": "..."}` → `Dialog` (`404` for a deleted dialog).
+* `DELETE /v1/dialogs/{id}` → `204` (the dialog and its messages become tombstones; deleting a tombstone
+  again is `204` too).
+* `DELETE /v1/messages/{id}` → `204` (same rules).
+* Deleting a message (or its dialog) while its answer is still streaming stops that answer.
+* An image no message uses any more after a deletion is deleted with it.
 * Dialogs are also created by the first chat message (below); a dialog's title, when empty, becomes the
-  first 60 characters of its first user message.
+  first 60 characters of its first user message that has text (whitespace collapsed). Every chat message
+  also moves the dialog's `updated_at` (a change with its own `seq`), so the dialog list can be sorted by
+  activity.
 
 ## Sync
 
@@ -152,9 +179,13 @@ A device remembers the highest `seq` it has seen and asks for what came after:
 {"dialogs": [Dialog, ...], "messages": [Message, ...], "prefs": {...} | null, "seq": 57, "more": false}
 ```
 
-* Objects whose `seq` is greater than `since`, in `seq` order, at most `limit` (1–1000) of them in all;
-  `seq` is the highest one returned (or `since` when there was nothing), `more: true` means ask again
-  right away. `prefs` is present when they changed after `since`.
+* Objects whose `seq` is greater than `since`, in `seq` order, at most `limit` (1–1000, default 500; else
+  `400 invalid_request`) of them in all, the prefs counting as one object; `seq` is the highest one returned
+  (or `since` when there was nothing), `more: true` means ask again right away. `prefs` is present when
+  they changed after `since`.
+* Each object appears once, with its latest state and `seq`; numbers of older states are gone, so the
+  sequence has gaps. Because an object moves to a new `seq` whenever it changes, a message can arrive in an
+  earlier page than its dialog: keep it until the dialog arrives.
 * `since=0` downloads everything (tombstones included, so a fresh device can skip them).
 * A device syncs when it opens, after each answer, and whenever a [live event](#live-events) says so.
 
@@ -164,24 +195,36 @@ A device remembers the highest `seq` it has seen and asks for what came after:
 is in the foreground.
 
 * `event: changed` `data: {"seq": 57}`: the user's data changed (from any device); sync if `seq` is higher
-  than yours. While an answer streams, its message is saved and announced at most every 1.5 seconds, so a
+  than yours. The first event of every stream is a `changed` with the user's current `seq`, so a device
+  that reconnects learns at once whether it missed something. Bursts are coalesced into one event with the
+  newest `seq`. While an answer streams, its message is saved and announced at most every 1.5 seconds, so a
   second device sees it grow.
-* `event: ping` `data: {}` every 25 seconds keeps proxies from closing the connection.
-* `event: revoked`: this device was unlinked; the stream ends.
+* `event: ping` `data: {}` after 25 seconds without another event keeps proxies from closing the connection.
+* `event: revoked` `data: {}`: this device was unlinked, or its token was replaced (it registered or was
+  linked again); the stream ends.
 
 ## Attachments
 
 Images a user attaches to a message (from the gallery or the camera).
 
 * `POST /v1/attachments` with the raw image as the body and `Content-Type: image/jpeg`, `image/png`,
-  `image/webp` or `image/heic` (at most 10 MB) → `201 {"id": "a_...", "mime": "image/jpeg", "width": w,
-  "height": h, "size": bytes}`. The server applies the EXIF orientation, strips metadata, scales the image
-  down to at most 1568 px on the long side and stores it as JPEG, plus a thumbnail of at most 320 px.
-  `415 unsupported_media` for anything it cannot decode. Limit: 60 uploads per hour per user.
-* `GET /v1/attachments/{id}` → the JPEG; `?size=thumb` → the thumbnail. Only devices of the owner may read
-  it (`404` otherwise). `Cache-Control: private, max-age=31536000, immutable`.
-* An attachment can be used by messages of its owner; at most 4 per message. The server sends them to the
-  model as images (base64), so pick a model that can see.
+  `image/webp` or `image/heic` (also `image/heif`; parameters such as `; charset=` are ignored) → `201 {"id":
+  "a_...", "mime": "image/jpeg", "width": w, "height": h, "size": bytes}` (`width`/`height`/`size` of the
+  stored JPEG). The server applies the EXIF orientation, converts to sRGB, strips metadata (EXIF, GPS, ICC),
+  flattens transparency onto white, scales the image down to at most 1568 px on the long side and stores it
+  as JPEG (quality 85), plus a thumbnail of at most 320 px.
+* `413 payload_too_large` above 10 MB (checked while reading). `415 unsupported_media` for another content
+  type or anything it cannot decode, including images above 50 megapixels; HEIC/HEIF needs the server's
+  optional `pillow-heif` package, without it those uploads are `415` too. Limit: 60 uploads per hour per user
+  (`429 rate_limited`).
+* `GET /v1/attachments/{id}` → the JPEG; `?size=thumb` → the thumbnail (`?size=full` or no `size`: the
+  image; any other value is `400`). Only devices of the owner may read it (`404 not_found` otherwise).
+  `Cache-Control: private, max-age=31536000, immutable`.
+* An attachment can be used by messages of its owner; at most 4 per message, each once. A message lists
+  them as `{"id", "mime", "width", "height"}`. The server sends the images of the newest 2 user messages
+  that have any to the model (base64, in each provider's own format), so pick a model that can see; older
+  images are replaced by the text `[image]` in the history. An upload no message uses stays until it is
+  used; once a used image's last message is deleted, the image is deleted too.
 
 ## Chat
 
@@ -202,17 +245,33 @@ Images a user attaches to a message (from the gallery or the camera).
 
 * The server saves the user message (idempotent by id; the dialog is created if it does not exist), creates
   the assistant message `answer_id` with `status: "streaming"`, and answers from the dialog's history as
-  stored on the server (the last 24 messages / 12k characters, images of the recent turns included).
+  stored on the server: the last 24 messages / 12k characters (an image counts as 1000 characters) that are
+  not deleted and are `done` or `error` with text or images, images of the recent turns included (see
+  [attachments](#attachments)). The answer's `created_at` is never before its question's.
+* `message.created_at` is optional (default: now). `answer_id` must differ from `message.id`; `attachments`
+  are ids of the caller's uploads (`400 invalid_request` for unknown or repeated ones, or more than 4). A chat
+  into a deleted dialog is `404 not_found`; ids of another user are `409 conflict`. Nothing is saved when a
+  request is refused.
+* Repeating a request with the same `answer_id` (a retry after a lost connection) asks the model nothing: the
+  stream joins the running answer from its start, or, when it already ended, sends just its `done` (with
+  zero `usage`) or `error`.
 * `model`, `effort`, `web_search`, `figures` are optional: absent or `null` means the user's
   [preferences](#preferences), then the server defaults. `web_search` and `figures` follow the server's
   master switches (`WEB_SEARCH`, `FIGURES`): a request can turn them off, never on. `effort` is one of
   `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; a level the model lacks is moved to the
-  nearest supported one. Unknown models: `400 model_not_allowed`; provider down: `503 provider_unavailable`;
-  none working: `503 no_provider`. `content` may be empty when there are attachments; otherwise empty text
-  is `400 invalid_request`.
+  nearest supported one. A requested model that is unknown: `400 model_not_allowed`; provider down:
+  `503 provider_unavailable`; none working: `503 no_provider`. A *preferred* model that is not available
+  right now falls back to the server default instead. `content` may be empty when there are attachments;
+  otherwise empty (or blank) text is `400 invalid_request`.
 * The answer is generated on the server and **does not depend on this connection**: if the client goes
   away, the answer still finishes, is saved and reaches every device through sync. The stream is a view of it.
-* Stop: `POST /v1/messages/{answer_id}/stop` → `204`; the answer ends with what it has (status `done`).
+  If the server stops while an answer streams, the answer is saved with `status: "error"` (`internal_error`)
+  and the text so far.
+* Stop: `POST /v1/messages/{answer_id}/stop` → `204` once the answer is saved; the answer ends with what it
+  has (status `done`, and the stream ends with `done`). Stopping an answer that already ended changes
+  nothing (`204`); an unknown message is `404 not_found`.
+* If the answer is deleted while it streams (its message or dialog), it stops and the stream ends with a
+  `done` whose `message` is the tombstone.
 * Response events:
   * `event: thinking` `data: {"text": "partial piece"}` (many): the model's reasoning summary, before or
     between `delta`s; absent when the model sent none or the server has `SHOW_THINKING=false`.
@@ -226,18 +285,23 @@ Images a user attaches to a message (from the gallery or the camera).
   * `event: error` `data: {"error": "<code>", "message": "...", "retry_after": 90}` (`retry_after` seconds,
     when known). Codes: `upstream_rate_limited`, `upstream_quota`, `upstream_auth`, `upstream_error`,
     `internal_error`. The assistant message is saved with `status: "error"` and whatever text arrived.
-* Limits per **user** (all their devices together): 20/min (`429 rate_limited`), 500/day
-  (`429 daily_limit`), with `Retry-After`. Request body at most 64 KiB (images go through attachments).
+* Limits per **user** (all their devices together, legacy chat included): 20/min (`429 rate_limited`),
+  500/day (`429 daily_limit`), with `Retry-After`. Request body at most 64 KiB (`413 payload_too_large`;
+  images go through attachments).
 * The server prepends its system prompt (short answers in the user's language; Markdown, LaTeX, code and
-  figures only when they help; the device the question came from: phone or watch).
+  figures only when they help; the device the question came from: a watch gets 1–3 sentences, a phone or
+  other device somewhat longer but still concise answers).
 
 ### Legacy chat
 
 Watch builds from before v2 send `{"dialog_id", "locale", "model", "effort", "web_search", "figures",
 "messages": [{"role", "content"}, ...]}` with the whole history and a token issued by the old `POST
-/v1/pair`. The server still answers those statelessly (nothing is saved). On the first start of a v2
-server, the tokens in the old `DATA_DIR/state.json` become watch devices of one user named "Owner", and its
-passcode stays the server passcode. `POST /v1/pair` itself is gone (`410 gone`): a new watch links with a code.
+/v1/pair`. The server still answers those statelessly (nothing is saved; preferences are not applied; a body
+with a `messages` key is always read this way, with any token). The events are the v1 ones: `done` carries
+no `message` or `seq`. On the first start of a v2 server, the tokens in the old `DATA_DIR/state.json` become
+watch devices of one user named "Owner" (no user is created when it has no tokens), and its passcode stays
+the server passcode; the file is then renamed to `state.json.migrated` and never imported again. `POST
+/v1/pair` itself is gone (`410 gone`): a new watch links with a code.
 
 ## Model info
 

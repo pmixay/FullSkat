@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Iterator
 
 import pytest
 from fastapi import FastAPI
@@ -21,12 +21,13 @@ def clock() -> FakeClock:
 
 
 @pytest.fixture
-def app(settings: Settings, clock: FakeClock) -> FastAPI:
+def app(settings: Settings, clock: FakeClock) -> Iterator[FastAPI]:
     application = create_app(settings=settings, clock=clock)
     application.state.llm = FakeLLM()
     application.state.timing.coalesce = 0.01
     application.state.timing.save_interval = 0.05
-    return application
+    yield application
+    application.state.store.close()
 
 
 @pytest.fixture
