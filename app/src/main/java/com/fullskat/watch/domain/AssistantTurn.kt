@@ -15,6 +15,7 @@ import com.fullskat.watch.data.net.ApiClient
 import com.fullskat.watch.data.net.ApiException
 import com.fullskat.watch.data.net.ChatEvent
 import com.fullskat.watch.data.net.ChatMessage
+import com.fullskat.watch.data.net.WebSources
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.speech.ListenEvent
 import com.fullskat.watch.speech.LocalSpeech
@@ -220,6 +221,7 @@ class AssistantTurn(
                     }
                     is ChatEvent.Done -> {
                         val text = ev.text.ifBlank { sb.toString() }
+                        if (ev.sources.isNotEmpty()) dao.updateMessageSources(msgId, WebSources.encode(ev.sources))
                         dao.updateMessageContent(msgId, text, ev.thinking.ifBlank { tb.toString() }, pending = false)
                         dao.touchDialog(dialogId, System.currentTimeMillis())
                         _state.value = TurnState.Idle

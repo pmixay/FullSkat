@@ -76,4 +76,9 @@
     <string name="err_no_provider">No model provider is working</string>
     <string name="err_model_unavailable">Model unavailable. Pick another one.</string>
     <string name="usage_left">%1$d%% left</string>
+    <string name="sources_title">Sources (%1$d)</string>
+    <string name="open_link">Open link</string>
+    <string name="opened_on_phone">Opened on phone</string>
+    <string name="phone_not_connected">Phone not connected</string>
+    <string name="link_failed">Couldn\'t open link</string>
 </resources>

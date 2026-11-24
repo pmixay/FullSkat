@@ -75,4 +75,9 @@
     <string name="err_no_provider">Ни один поставщик модели не работает</string>
     <string name="err_model_unavailable">Модель недоступна. Выберите другую.</string>
     <string name="usage_left">Осталось %1$d%%</string>
+    <string name="sources_title">Источники (%1$d)</string>
+    <string name="open_link">Открыть ссылку</string>
+    <string name="opened_on_phone">Открыто на телефоне</string>
+    <string name="phone_not_connected">Телефон не подключён</string>
+    <string name="link_failed">Не удалось открыть</string>
 </resources>

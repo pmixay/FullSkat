@@ -69,6 +69,7 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.R
 import com.fullskat.watch.data.db.MessageEntity
 import com.fullskat.watch.data.db.Role
+import com.fullskat.watch.data.net.WebSources
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
@@ -283,6 +284,10 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 )
             }
+        }
+        if (!isUser && !m.pending) {
+            val sources = remember(m.sources) { WebSources.decode(m.sources) }
+            if (sources.isNotEmpty()) SourcesBlock(sources)
         }
     }
 }
