@@ -56,7 +56,7 @@ jobs:
           echo "FULLSKAT_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
+        run: ./gradlew :app:testDebugUnitTest :core:testDebugUnitTest --no-daemon --console=plain
 
       # Renders the real screens on the JVM (Robolectric) for review; never blocks the APK.
       - name: Screenshots
