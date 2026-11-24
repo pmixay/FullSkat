@@ -1,17 +1,33 @@
 # FullSkat
 
-A voice assistant for Wear OS. Tap the mic (or hold the side key when FullSkat is the
-default assistant), speak Russian, watch the words appear while you are still
-talking, and read a short plain-text answer. Speech is recognised on the watch itself;
-dialogs stay there too. A small server you host holds the API keys and relays the chat.
+An AI assistant for your phone and your Wear OS watch. The **phone app** is the core: you sign up there,
+chat with Claude, GPT and Kimi models by text, voice and photos, choose models and settings, and link your
+watch. The **watch app** is for speaking: tap the mic (or hold the side key), say it in Russian, read a short
+answer, with graphs and figures the model draws. Both show the same conversations: everything syncs through
+the server you host, never directly between the devices. Several people can use one server, each with their
+own account.
 
-* **Watch app** (`app/`): Kotlin, Jetpack Compose for Wear OS (Material 3), Room,
-  DataStore, OkHttp. Target device: Galaxy Watch7 (SM-L305F), Wear OS 6/7, `compileSdk 37`,
-  `targetSdk 37`, `minSdk 33`.
-* **Server** (`server/`): Python, FastAPI. Pairing passcode, per-token rate limits,
-  chat relay to the Claude API (default model `claude-haiku-5-5`, with web search), OpenRouter
-  Kimi and OpenAI/Codex LB, any of them at once. See [`server/README.md`](server/README.md).
-* **Protocol** ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): pairing and SSE chat.
+* **Phone app** (`phone/`): Kotlin, Jetpack Compose Material 3. Sign-up, dialogs, chat with images from the
+  gallery or the camera, voice input, figures, model settings, linking a watch, devices.
+* **Watch app** (`app/`): Kotlin, Jetpack Compose for Wear OS (Material 3). Target device: Galaxy Watch7
+  (SM-L305F), Wear OS 6/7, `compileSdk 37`, `targetSdk 37`, `minSdk 33`.
+* **Shared core** (`core/`): the rich-text and figure renderer, the API client, the local copy of the account's
+  dialogs (Room) with sync, chat, accounts and attachments; both apps are built on it.
+* **Server** (`server/`): Python, FastAPI, SQLite. Accounts, code linking, sync, live events, image attachments
+  and the chat relay to the Claude API, OpenRouter, Kimi Code and OpenAI Responses gateways, any of them at
+  once. See [`server/README.md`](server/README.md).
+* **Protocol** ([`docs/PROTOCOL.md`](docs/PROTOCOL.md)): v2, accounts, linking, sync, attachments, chat.
+
+## How it fits together
+
+1. On the phone, sign up with your name and the server passcode (the first person on a fresh server sets it).
+2. Open the watch app: it shows a 6-character code (letters and digits) that changes every 30 seconds, with a
+   countdown ring around the bezel. On the phone: Settings → Link a watch, type the code. Done: the watch is
+   part of your account.
+3. Ask on either device. The server keeps the dialogs; the other device catches up when it opens and, while it
+   is open, live (a question asked on the phone appears on the watch as it is being answered). Model, effort,
+   web search and drawings are shared settings; vibration stays per device.
+4. Answers are generated on the server, so they finish even if the asking device loses its connection.
 
 ## What the watch app does
 
@@ -21,12 +37,12 @@ dialogs stay there too. A small server you host holds the API keys and relays th
 | Answers | Server-sent events stream the reply token by token. The system prompt asks for short plain text in the language you spoke, and allows Markdown, LaTeX and fenced code only when they really help. |
 | Rich answers | Assistant messages are rendered as Markdown: **bold**, *italic*, lists, quotes, tables and `inline code`; LaTeX math in `$...$`, `$$...$$`, `\[...\]` and `\begin{align}` (fractions, roots, sums, integrals with limits, matrices, cases, aligned blocks, accents, braces, stretchy delimiters, colours, `\text` in Russian and English); fenced code with syntax highlighting for Kotlin, Java, Python, JS/TS, C/C++, C#, Go, Rust, Swift, Ruby, PHP, Lua, Bash, SQL, JSON, YAML, TOML, CSS, HTML/XML and diffs. The math engine is pure Kotlin (no WebView): a LaTeX parser plus a TeX-style layout (atom spacing, script and limit rules, constants from the font's OpenType MATH table) drawn on a Canvas with the bundled [Noto Sans Math](https://github.com/notofonts/math) font (SIL OFL 1.1, `assets/fonts/OFL-NotoSansMath.txt`). Wide equations shrink to fit down to 62 % and then scroll sideways; unsupported commands are shown literally in red instead of failing. |
 | Figures | The model can draw: function graphs (also parametric and polar), line, scatter, bar and pie charts, geometry (angle marks, arrows, polygons, circles) and small diagrams, through the server's `draw` tool. The watch renders them natively on a Canvas (its own expression evaluator, π ticks, asymptote-aware sampling, LaTeX labels) and animates them as the model draws them: axes, then each curve traced with a pen dot, fills, points, bars growing, labels. Tap a figure for the full-screen viewer: bezel or crown to zoom, pinch, drag to pan, double tap to reset and replay. Settings → Drawings turns it off. |
-| Dialogs | Stored in Room on the watch. Long-press a dialog in the list to delete it. |
+| Dialogs | The account's dialogs, synced through the server (a local Room copy on the watch). Long-press a dialog in the list to delete it everywhere. Images attached on the phone show as thumbnails above the question. |
 | Default assistant | `VoiceInteractionService` + `RecognitionService`. Choose FullSkat in *Settings → Apps → Default apps → Digital assistant app* (or Settings → Set as assistant inside the app). The assist gesture opens a fresh dialog and starts listening at once. |
 | Tile | Swipe-left tile with a big amber mic and today's dialog count. |
 | Complication | Round watch-face widget showing only a mic icon (monochromatic or small image) that starts a new dialog. |
-| Pairing | The app is fixed to `https://skat.arbuz.lol` (there is no address field). Enter a 4–8 digit passcode on a keypad. The first watch that reaches a fresh server sets the passcode. The token is kept AES-GCM encrypted with an Android Keystore key. |
-| Models | Settings → Model: Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1, and configured OpenRouter, Kimi Code and OpenAI gateway models (GPT-6.1 Terra, GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra). The list comes from the server and is grouped by provider (collapsed by default, each with a ring showing its budget left); it shows providers whose probes pass. Server-side additions need no watch reinstall. |
+| Linking | The app is fixed to `https://skat.arbuz.lol` (there is no address field). It shows a 6-character code (from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`) that changes every 30 seconds, with a ring around the bezel running down; enter it in the phone app. The token is kept AES-GCM encrypted with an Android Keystore key. Settings → Unlink this watch ends it (or unlink it from the phone). |
+| Models | Settings → Model (shared with the phone): Claude Haiku 5.5 (default), Sonnet 5.5, Opus 5.5, Fable 5.1, and configured OpenRouter, Kimi Code and OpenAI gateway models (GPT-6.1 Terra, GPT-6 Luna, GPT-6.1 Sol, GPT-6 Astra). The list comes from the server and is grouped by provider (collapsed by default, each with a ring showing its budget left); it shows providers whose probes pass. Server-side additions need no watch reinstall. |
 | Web search | The assistant searches the web on its own for news, weather, prices and other fresh facts (server setting `WEB_SEARCH`). An answer that used the web gets a collapsed "Sources (n)" row under it (Claude, OpenRouter and OpenAI models report them); expanded, it lists each page's site and title, and a tap opens the page in the paired phone's browser (or a browser on the watch, if there is one). |
 | Languages | Speech recognition is Russian-only. The assistant answers in the language the text is in. UI is localized in English and Russian. |
 
@@ -80,20 +96,25 @@ cp .env.example .env     # set ANTHROPIC_API_KEY
 docker compose up -d --build
 ```
 
-Put it behind HTTPS (Caddy example in the server README), open the watch app and pick a passcode.
+Put it behind HTTPS (Caddy example in the server README), then sign up in the phone app: the first
+registration sets the server passcode; share it with the people who should get their own accounts.
+Dialogs and images now live on the server (`DATA_DIR`: `fullskat.db` and `attachments/`), so back that up.
 
 ## Design
 
 Three directions were drawn for the 1.3-inch round screen; the shipped one is
 "Ember": charcoal ground, amber accent, chat bubbles, a round floating mic and a bezel
 ring that breathes with your voice while listening. All colors and the bubble shapes
-live in `app/src/main/java/com/fullskat/watch/ui/theme/Theme.kt`.
+live in `core/src/main/java/com/fullskat/core/ui/theme/Ember.kt`, shared by both apps.
 
 ## Repository layout
 
 ```
+phone/      Android phone application (Gradle module)
 app/        Wear OS application (Gradle module)
+core/       Android library both apps use: renderer, API client, sync, chat, accounts
 server/     FastAPI server, Dockerfile, tests
+tools/      screenshot rendering (render/), client-server interop server (interop/)
 docs/       PROTOCOL.md
 .github/    CI workflow
 ```
