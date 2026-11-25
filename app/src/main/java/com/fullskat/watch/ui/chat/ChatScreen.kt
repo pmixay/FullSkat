@@ -106,9 +106,7 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
         if (granted) vm.startTurn(dialogId) else permission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    LaunchedEffect(dialogId, autoListen) {
-        if (autoListen && !turn.busy) startListening()
-    }
+    AutoListen(dialogId, autoListen, busy = turn.busy, start = startListening)
     // Errors clear themselves after a few seconds.
     LaunchedEffect(turn) {
         val failure = turn as? TurnState.Failed
@@ -229,6 +227,22 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
                 finishing = turn is TurnState.Transcribing,
                 onTap = { vm.finishListening() },
             )
+        }
+    }
+}
+
+/**
+ * Starts listening once when a chat is opened for that (the mic on the dialog list, the assist gesture), and
+ * never again for the same chat: not when it comes back from a figure or another screen on top of it, not after
+ * the activity is recreated. "Done" lives in the navigation entry's saved state, which outlives both.
+ */
+@Composable
+internal fun AutoListen(dialogId: String, autoListen: Boolean, busy: Boolean, start: () -> Unit) {
+    var done by rememberSaveable(dialogId) { mutableStateOf(false) }
+    LaunchedEffect(dialogId, autoListen) {
+        if (autoListen && !done) {
+            done = true
+            if (!busy) start()
         }
     }
 }
