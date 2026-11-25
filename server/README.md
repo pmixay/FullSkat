@@ -175,8 +175,8 @@ working provider. Models are routed to the provider that lists them.
 
 * **OpenAI / Codex LB** (`OPENAI_*`): uses the Responses API at `OPENAI_BASE_URL` (direct OpenAI
   `https://api.openai.com/v1`, local Codex LB `http://127.0.0.1:2455/v1`). Set `OPENAI_API_KEY` to a
-  dedicated gateway key. The default allowlist contains `gpt-6.1-terra`, `gpt-6-luna`, `gpt-6.1-sol`
-  and `gpt-6-astra`. An authenticated `/models` probe controls availability; Codex LB's model metadata
+  dedicated gateway key. The default allowlist contains `gpt-6.1-terra`, `gpt-6-luna`, `gpt-6.2-sol`
+  and `gpt-6.2-astra`. An authenticated `/models` probe controls availability; Codex LB's model metadata
   supplies supported reasoning levels, or set `OPENAI_MODEL_EFFORTS` for a gateway without metadata.
   Responses text, refusal text, reasoning summaries and token usage are translated to the existing
   chat SSE events. Failed, incomplete or disconnected responses produce an error, never a successful

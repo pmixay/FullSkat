@@ -11,7 +11,7 @@ from fullskat_server.config import Settings
 from fullskat_server.llm import LLMError, OpenAILLM, Thinking, Usage, create_llm
 
 
-MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"]
+MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-sol", "gpt-6.2-astra"]
 
 
 def settings(tmp_path: Path, **kwargs) -> Settings:

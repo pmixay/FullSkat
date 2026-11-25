@@ -14,7 +14,7 @@ DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,kimi-for-coding"
 # OpenRouter's catalog (max/high/low/none) agree on the rest.
 DEFAULT_KIMI_MODEL_EFFORTS = {"k3.1-pro": "low,high,max", "kimi-for-coding": "low,high,max"}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
-DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.1-sol,gpt-6-astra"
+DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.2-sol,gpt-6.2-astra"
 
 
 PROVIDERS = ("anthropic", "openrouter", "kimi", "openai")
