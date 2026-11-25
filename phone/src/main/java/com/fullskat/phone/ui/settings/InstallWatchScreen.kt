@@ -38,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Warning
@@ -78,6 +79,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.fullskat.core.ui.theme.Ember
@@ -86,9 +88,13 @@ import com.fullskat.phone.watchinstall.AdbProblem
 import com.fullskat.phone.watchinstall.BundledApk
 import com.fullskat.phone.watchinstall.InstallAction
 import com.fullskat.phone.watchinstall.InstallError
+import com.fullskat.phone.watchinstall.PairedWatch
 import com.fullskat.phone.watchinstall.WatchInfo
 import com.fullskat.phone.watchinstall.WatchService
+import com.fullskat.phone.watchinstall.hostPort
 import com.fullskat.phone.watchinstall.installAction
+import com.fullskat.phone.watchinstall.watchDisplayName
+import com.fullskat.phone.watchinstall.watchModelName
 import com.fullskat.phone.watchinstall.wearOsVersion
 
 @Composable
@@ -118,8 +124,9 @@ fun InstallWatchScreen(vm: InstallWatchViewModel, onBack: () -> Unit, onLinkWatc
 private enum class StepState { ACTIVE, DONE, WAITING }
 
 /**
- * Four steps on one page: prepare the watch, pair (once), connect, install; then a done page. Steps that are behind
- * fold into one line.
+ * Three stages, one open at a time: pair (once per watch; a watch paired before skips it), connect (by itself), install
+ * (on the button, then the app opens on the watch); then a done page. Stages behind fold into one line, stages ahead
+ * wait greyed out.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,14 +155,18 @@ fun InstallWatchContent(
                 DoneView(install, onDone = onBack, onLinkWatch = onLinkWatch)
                 return@Column
             }
-            Text(
-                stringResource(R.string.iw_intro),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
             if (state.needsPermission) PermissionCard(state.permissionDenied, onAllowNetwork)
-            PrepareStep(state)
+            when (state.bundled) {
+                BundledApk.NotBundled -> Note(stringResource(R.string.iw_not_bundled))
+                BundledApk.Broken -> ErrorText(stringResource(R.string.iw_broken))
+                else -> Unit
+            }
+            if (state.loading) {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp, color = Ember.accent)
+                }
+                return@Column
+            }
             PairStep(state, actions)
             ConnectStep(state, actions)
             InstallStep(state, actions)
@@ -164,44 +175,30 @@ fun InstallWatchContent(
     }
 }
 
-// ---------------------------------------------------------------------------------------------------------- steps
-
-@Composable
-private fun PrepareStep(state: InstallerState) {
-    val seen = state.connected != null || state.pairServices.isNotEmpty() || state.connectServices.isNotEmpty()
-    var open by rememberSaveable { mutableStateOf<Boolean?>(null) }
-    val expanded = open ?: !seen
-    StepCard(
-        number = 1,
-        title = stringResource(R.string.iw_step_prepare),
-        step = if (seen) StepState.DONE else StepState.ACTIVE,
-        summary = if (seen) stringResource(R.string.iw_prepare_done) else null,
-        expanded = expanded,
-        onToggle = { open = !expanded },
-    ) {
-        Bullet(stringResource(R.string.iw_prepare_wifi))
-        Bullet(stringResource(R.string.iw_prepare_dev))
-        Bullet(stringResource(R.string.iw_prepare_wireless))
-        Bullet(stringResource(R.string.iw_prepare_pair))
-    }
-}
+// ---------------------------------------------------------------------------------------------------------- 1: pair
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PairStep(state: InstallerState, actions: InstallerActions) {
-    val done = state.pair == PairStatus.Paired || state.connected != null
+    val active = state.stage == InstallStage.PAIR
+    val names = state.candidates.joinToString(", ") { it.name }
     StepCard(
-        number = 2,
+        number = 1,
         title = stringResource(R.string.iw_step_pair),
-        step = if (done) StepState.DONE else StepState.ACTIVE,
-        summary = if (done) stringResource(R.string.iw_paired) else null,
-        expanded = !done,
+        step = if (active) StepState.ACTIVE else StepState.DONE,
+        summary = names.takeIf { it.isNotEmpty() }?.let { stringResource(R.string.iw_paired_summary, it) },
+        expanded = active,
     ) {
         val working = state.pair == PairStatus.Working
-        if (state.notPaired) {
-            Text(stringResource(R.string.iw_not_paired), style = MaterialTheme.typography.bodyMedium, color = Ember.accent)
-            Spacer(Modifier.height(8.dp))
+        Text(stringResource(R.string.iw_pair_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(10.dp))
+        Fold(stringResource(R.string.iw_howto), openByDefault = state.pairServices.isEmpty()) {
+            Bullet(stringResource(R.string.iw_prepare_wifi))
+            Bullet(stringResource(R.string.iw_prepare_dev))
+            Bullet(stringResource(R.string.iw_prepare_wireless))
+            Bullet(stringResource(R.string.iw_prepare_pair))
         }
+        Spacer(Modifier.height(12.dp))
         if (state.pairServices.isNotEmpty()) {
             Text(stringResource(R.string.iw_found), style = MaterialTheme.typography.labelMedium, color = Ember.label)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -238,92 +235,144 @@ private fun PairStep(state: InstallerState, actions: InstallerActions) {
         Text(stringResource(R.string.iw_code), style = MaterialTheme.typography.labelMedium, color = Ember.label)
         Spacer(Modifier.height(6.dp))
         PairingCodeField(state.pairCode, actions::onPairCode, onDone = actions::pair, enabled = !working, error = state.pair is PairStatus.Failed)
-        Spacer(Modifier.height(10.dp))
         when (val p = state.pair) {
-            PairStatus.Working -> Progress(stringResource(R.string.iw_pairing))
-            is PairStatus.Failed -> ErrorText(adbProblemText(p.problem), p.detail.takeIf { p.problem == AdbProblem.OTHER })
-            else -> Text(stringResource(R.string.iw_pair_once), style = MaterialTheme.typography.bodySmall, color = Ember.label)
+            PairStatus.Working -> {
+                Spacer(Modifier.height(10.dp))
+                Progress(stringResource(R.string.iw_pairing))
+            }
+            is PairStatus.Failed -> {
+                Spacer(Modifier.height(10.dp))
+                ErrorText(adbProblemText(p.problem), p.detail.takeIf { p.problem == AdbProblem.OTHER })
+            }
+            else -> Unit
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp))
         Button(
             onClick = actions::pair,
             enabled = state.pairCode.length == 6 && !state.busy,
             modifier = Modifier.fillMaxWidth().height(48.dp),
         ) { Text(stringResource(R.string.iw_pair_button)) }
+        if (state.saved.isNotEmpty()) {
+            TextButton(onClick = actions::usePairedWatches, enabled = !working, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(stringResource(R.string.iw_back_to_paired))
+            }
+        }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+// ---------------------------------------------------------------------------------------------------------- 2: connect
+
 @Composable
 private fun ConnectStep(state: InstallerState, actions: InstallerActions) {
+    val stage = state.stage
     val info = state.connected
     StepCard(
-        number = 3,
+        number = 2,
         title = stringResource(R.string.iw_step_connect),
-        step = if (info != null) StepState.DONE else StepState.ACTIVE,
-        expanded = true,
+        step = when (stage) {
+            InstallStage.PAIR -> StepState.WAITING
+            InstallStage.CONNECT -> StepState.ACTIVE
+            else -> StepState.DONE
+        },
+        summary = when {
+            info != null -> stringResource(R.string.iw_connected_summary, watchDisplayName(info), state.connectAddress)
+            stage == InstallStage.PAIR -> stringResource(R.string.iw_connect_waiting)
+            else -> null
+        },
+        expanded = stage == InstallStage.CONNECT,
     ) {
-        if (info != null) {
-            WatchCard(info, minSdk = (state.bundled as? BundledApk.Ready)?.minSdk ?: 0)
-            TextButton(onClick = actions::disconnect, enabled = !state.busy, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.iw_disconnect))
-            }
-            return@StepCard
-        }
         val working = state.connection == ConnectionStatus.Working
-        if (state.connectServices.isNotEmpty()) {
-            Text(stringResource(R.string.iw_found), style = MaterialTheme.typography.labelMedium, color = Ember.label)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.connectServices.forEach { s ->
-                    ServiceChip(s, selected = s.address == state.connectAddress, enabled = !state.busy) { actions.selectConnectService(s) }
-                }
-            }
-            Spacer(Modifier.height(4.dp))
+        if (state.saved.size > 1) {
+            Text(stringResource(R.string.iw_paired_watches), style = MaterialTheme.typography.labelMedium, color = Ember.label)
+            Spacer(Modifier.height(6.dp))
         }
-        OutlinedTextField(
-            value = state.connectAddress,
-            onValueChange = actions::onConnectAddress,
-            label = { Text(stringResource(R.string.iw_connect_address)) },
-            placeholder = { Text("192.168.1.23:41235") },
-            supportingText = { Text(stringResource(R.string.iw_connect_hint)) },
-            singleLine = true,
-            enabled = !working,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
-            keyboardActions = KeyboardActions(onGo = { actions.connect() }),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(6.dp))
-        when (val c = state.connection) {
-            ConnectionStatus.Working -> {
-                Progress(stringResource(R.string.iw_connecting, state.connectAddress))
-                Spacer(Modifier.height(10.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (watch in state.saved) {
+                SavedWatchRow(
+                    watch,
+                    selected = state.target?.key == watch.key || (state.target == null && state.saved.size == 1),
+                    enabled = !working,
+                    onClick = { actions.selectWatch(watch) },
+                    onForget = { actions.forgetWatch(watch) },
+                )
             }
-            is ConnectionStatus.Failed -> {
+        }
+        Spacer(Modifier.height(12.dp))
+        when (val c = state.connection) {
+            ConnectionStatus.Working -> Progress(stringResource(R.string.iw_connecting, state.connectAddress))
+            is ConnectionStatus.Failed -> if (state.notPaired) {
+                ErrorText(stringResource(R.string.iw_not_paired))
+                Spacer(Modifier.height(10.dp))
+                Button(onClick = actions::pairNewWatch, modifier = Modifier.fillMaxWidth().height(48.dp)) { Text(stringResource(R.string.iw_pair_again)) }
+            } else {
                 ErrorText(adbProblemText(c.problem), c.detail.takeIf { c.problem == AdbProblem.OTHER })
                 Spacer(Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = actions::retryConnect,
+                    border = BorderStroke(1.dp, Ember.outline),
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                ) { Text(stringResource(R.string.retry)) }
             }
-            else -> Unit
+            else -> when {
+                state.paused -> Text(stringResource(R.string.iw_pick_watch), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                state.candidates.size == 1 -> Searching(stringResource(R.string.iw_connect_searching, state.candidates[0].name))
+                else -> Searching(stringResource(R.string.iw_connect_searching_any))
+            }
         }
-        OutlinedButton(
-            onClick = actions::connect,
-            enabled = state.connectAddress.isNotBlank() && !state.busy,
-            border = BorderStroke(1.dp, Ember.outline), // the default disabled outline vanishes on the dark card
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) { Text(stringResource(R.string.iw_connect_button)) }
+        if (state.slow && !working && !state.notPaired) {
+            Spacer(Modifier.height(10.dp))
+            Note(stringResource(R.string.iw_connect_slow))
+        }
+        Spacer(Modifier.height(12.dp))
+        Fold(stringResource(R.string.iw_manual), openByDefault = false) {
+            OutlinedTextField(
+                value = state.connectAddress,
+                onValueChange = actions::onConnectAddress,
+                label = { Text(stringResource(R.string.iw_connect_address)) },
+                placeholder = { Text("192.168.1.23:41235") },
+                supportingText = { Text(stringResource(R.string.iw_connect_hint)) },
+                singleLine = true,
+                enabled = !working,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Go, autoCorrectEnabled = false),
+                keyboardActions = KeyboardActions(onGo = { actions.connect() }),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = actions::connect,
+                enabled = state.connectAddress.isNotBlank() && !state.busy,
+                border = BorderStroke(1.dp, Ember.outline), // the default disabled outline vanishes on the dark card
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text(stringResource(R.string.iw_connect_button)) }
+        }
+        TextButton(onClick = actions::pairNewWatch, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text(stringResource(R.string.iw_pair_new))
+        }
     }
 }
+
+// ---------------------------------------------------------------------------------------------------------- 3: install
 
 @Composable
 private fun InstallStep(state: InstallerState, actions: InstallerActions) {
     val info = state.connected
     val bundled = state.bundled
+    val context = LocalContext.current
+    val active = state.stage == InstallStage.INSTALL && info != null
     StepCard(
-        number = 4,
+        number = 3,
         title = stringResource(R.string.iw_step_install),
-        step = if (info != null && bundled is BundledApk.Ready) StepState.ACTIVE else StepState.WAITING,
-        expanded = true,
+        step = if (active) StepState.ACTIVE else StepState.WAITING,
+        summary = when (bundled) {
+            is BundledApk.Ready -> stringResource(R.string.iw_bundled, bundled.version.label, Formatter.formatShortFileSize(context, bundled.size))
+            BundledApk.NotBundled, BundledApk.Broken -> stringResource(R.string.iw_not_bundled_short)
+            BundledApk.Loading -> null
+        },
+        expanded = active,
     ) {
-        val context = LocalContext.current
+        if (info == null) return@StepCard
+        WatchCard(info, minSdk = (bundled as? BundledApk.Ready)?.minSdk ?: 0)
+        Spacer(Modifier.height(12.dp))
         when (bundled) {
             BundledApk.Loading -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Ember.accent)
             BundledApk.NotBundled -> Note(stringResource(R.string.iw_not_bundled))
@@ -334,11 +383,6 @@ private fun InstallStep(state: InstallerState, actions: InstallerActions) {
             )
         }
         if (bundled !is BundledApk.Ready) return@StepCard
-        if (info == null) {
-            Spacer(Modifier.height(4.dp))
-            Text(stringResource(R.string.iw_connect_first), style = MaterialTheme.typography.bodySmall, color = Ember.label)
-            return@StepCard
-        }
         Spacer(Modifier.height(12.dp))
         val action = installAction(bundled.version, info.installed)
         when (val install = state.install) {
@@ -370,17 +414,28 @@ private fun InstallStep(state: InstallerState, actions: InstallerActions) {
                 )
                 Text(stringResource(R.string.iw_keep_open), style = MaterialTheme.typography.bodySmall, color = Ember.label)
             }
-            InstallStatus.Installing, InstallStatus.Removing -> {
+            InstallStatus.Installing, InstallStatus.Removing, InstallStatus.Opening -> {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)), color = Ember.accent, trackColor = Ember.surfaceHigh)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    stringResource(if (install == InstallStatus.Removing) R.string.iw_removing else R.string.iw_installing),
+                    stringResource(
+                        when (install) {
+                            InstallStatus.Removing -> R.string.iw_removing
+                            InstallStatus.Opening -> R.string.iw_opening
+                            else -> R.string.iw_installing
+                        },
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(stringResource(R.string.iw_keep_open), style = MaterialTheme.typography.bodySmall, color = Ember.label)
             }
             is InstallStatus.Failed -> InstallFailure(install, actions)
             is InstallStatus.Done -> Unit
+        }
+        if (!state.busy) {
+            TextButton(onClick = actions::disconnect, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(stringResource(R.string.iw_disconnect))
+            }
         }
     }
 }
@@ -428,7 +483,14 @@ private fun DoneView(done: InstallStatus.Done, onDone: () -> Unit, onLinkWatch: 
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            stringResource(if (done.relink) R.string.iw_done_relink else R.string.iw_done_updated),
+            stringResource(
+                when {
+                    done.opened && done.relink -> R.string.iw_done_opened_relink
+                    done.opened -> R.string.iw_done_opened_updated
+                    done.relink -> R.string.iw_done_relink
+                    else -> R.string.iw_done_updated
+                },
+            ),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -595,6 +657,68 @@ private fun Note(text: String) {
     }
 }
 
+/** A section of a card that folds open on a tap: the wireless-debugging how-to, the address typed by hand. */
+@Composable
+private fun Fold(title: String, openByDefault: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    var open by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    val expanded = open ?: openByDefault
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Ember.surfaceLow)) {
+        Row(
+            Modifier.fillMaxWidth().clickable { open = !expanded }.padding(start = 12.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = stringResource(if (expanded) R.string.collapse else R.string.expand),
+                tint = Ember.label,
+            )
+        }
+        if (expanded) Column(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), content = content)
+    }
+}
+
+/** A watch paired before: tap to connect to it, the cross forgets it. */
+@Composable
+private fun SavedWatchRow(watch: PairedWatch, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onForget: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(if (selected) Ember.userBubble else Ember.surfaceLow)
+            .border(1.dp, if (selected) Ember.accentDim else Ember.outline, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(start = 12.dp, top = 10.dp, bottom = 10.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(36.dp).background(Ember.accent.copy(alpha = 0.14f), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_watch), contentDescription = null, tint = Ember.accent, modifier = Modifier.size(20.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                watch.name,
+                style = MaterialTheme.typography.titleSmall,
+                color = if (selected) Ember.onUserBubble else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val address = if (watch.port > 0) hostPort(watch.host, watch.port) else watch.host
+            Text(
+                listOfNotNull(watch.serial?.takeIf { it != watch.name }, address).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = Ember.label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onForget, enabled = enabled) {
+            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.iw_forget, watch.name), tint = Ember.label)
+        }
+    }
+}
+
 /** The connected watch: model, system, processor and the FullSkat on it. */
 @Composable
 private fun WatchCard(info: WatchInfo, minSdk: Int) {
@@ -606,10 +730,10 @@ private fun WatchCard(info: WatchInfo, minSdk: Int) {
             Icon(painterResource(R.drawable.ic_watch), contentDescription = null, tint = Ember.accent, modifier = Modifier.size(24.dp))
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val name = listOf(info.manufacturer.replaceFirstChar { it.uppercase() }, info.model).filter { it.isNotBlank() }.distinct()
-                .let { parts -> if (parts.size == 2 && parts[1].startsWith(parts[0], ignoreCase = true)) listOf(parts[1]) else parts }
-                .joinToString(" ")
-            Text(name.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium)
+            Text(watchDisplayName(info).ifBlank { "—" }, style = MaterialTheme.typography.titleMedium)
+            if (info.deviceName.isNotBlank()) {
+                Text(watchModelName(info), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             val wear = wearOsVersion(info.sdk)
             Text(
                 if (wear != null) stringResource(R.string.iw_watch_system, wear, info.androidVersion, info.sdk)

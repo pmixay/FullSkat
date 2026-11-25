@@ -83,7 +83,24 @@ class WatchAdb(private val keyDir: File, private val deviceName: String) {
         exchange("shell:$command; echo $END_MARK", write = null, done = { it.contains(END_MARK) }, idleTimeoutMs).substringBefore(END_MARK)
 
     /** The watch's model, system and the FullSkat installed on it. */
-    suspend fun watchInfo(): WatchInfo = watchInfo(parseGetprop(shell("getprop")), shell("dumpsys package $WATCH_PACKAGE"))
+    suspend fun watchInfo(): WatchInfo = watchInfo(
+        parseGetprop(shell("getprop")),
+        shell("dumpsys package $WATCH_PACKAGE"),
+        runCatching { shell("settings get global device_name") }.getOrDefault(""),
+    )
+
+    /**
+     * Opens [pkg]'s launcher activity on the watch, waking its screen first; true when the watch reports it started (or
+     * it was already in front).
+     */
+    suspend fun launchApp(pkg: String = WATCH_PACKAGE): Boolean {
+        val component = parseResolvedActivity(
+            shell("cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $pkg"),
+            pkg,
+        ) ?: return false
+        shell("input keyevent KEYCODE_WAKEUP") // a no-op when the screen is on
+        return launchSucceeded(shell("am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -n $component"))
+    }
 
     suspend fun installedVersion(): AppVersion? = parseInstalledVersion(shell("dumpsys package $WATCH_PACKAGE"))
 

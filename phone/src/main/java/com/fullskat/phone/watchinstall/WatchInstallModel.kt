@@ -44,7 +44,21 @@ data class WatchInfo(
     val abis: List<String>,
     /** FullSkat on the watch; null when it is not installed. */
     val installed: AppVersion?,
+    /** `ro.serialno`, the serial the wireless-debugging service names carry; blank when hidden. */
+    val serial: String = "",
+    /** The name the watch goes by (Settings → About, e.g. "Galaxy Watch7 (D4F2)"); blank when not set. */
+    val deviceName: String = "",
 )
+
+/** The watch's own name, or its maker and model ("Samsung SM-L305F") when it has none. */
+fun watchDisplayName(info: WatchInfo): String = info.deviceName.ifBlank { watchModelName(info) }
+
+/** "Samsung SM-L305F"; just the model when it already starts with the maker ("Xiaomi Watch 2" by Xiaomi). */
+fun watchModelName(info: WatchInfo): String {
+    val parts = listOf(info.manufacturer.replaceFirstChar { it.uppercase() }, info.model).filter { it.isNotBlank() }.distinct()
+    val shown = if (parts.size == 2 && parts[1].startsWith(parts[0], ignoreCase = true)) listOf(parts[1]) else parts
+    return shown.joinToString(" ")
+}
 
 /** Why pairing or connecting failed, in terms the screen explains. */
 enum class AdbProblem { WRONG_CODE, TIMEOUT, UNREACHABLE, REFUSED, NOT_PAIRED, LOST, NO_TLS, BAD_ADDRESS, OTHER }
@@ -118,8 +132,8 @@ fun parseGetprop(text: String): Map<String, String> {
     return text.lineSequence().mapNotNull { line.find(it.trim()) }.associate { it.groupValues[1] to it.groupValues[2] }
 }
 
-/** The watch's details from its properties and the dumpsys of FullSkat. */
-fun watchInfo(props: Map<String, String>, dumpsys: String): WatchInfo = WatchInfo(
+/** The watch's details from its properties, the dumpsys of FullSkat and `settings get global device_name`. */
+fun watchInfo(props: Map<String, String>, dumpsys: String, deviceName: String = ""): WatchInfo = WatchInfo(
     model = props["ro.product.model"].orEmpty().ifBlank { props["ro.product.device"].orEmpty() },
     manufacturer = props["ro.product.manufacturer"].orEmpty(),
     androidVersion = props["ro.build.version.release"].orEmpty(),
@@ -127,7 +141,20 @@ fun watchInfo(props: Map<String, String>, dumpsys: String): WatchInfo = WatchInf
     abis = props["ro.product.cpu.abilist"].orEmpty().split(',').map { it.trim() }.filter { it.isNotEmpty() }
         .ifEmpty { listOfNotNull(props["ro.product.cpu.abi"]?.takeIf { it.isNotBlank() }) },
     installed = parseInstalledVersion(dumpsys),
+    serial = props["ro.serialno"].orEmpty().ifBlank { props["ro.boot.serialno"].orEmpty() },
+    deviceName = deviceName.trim().takeUnless { it == "null" }.orEmpty(), // `settings get` prints "null" for no value
 )
+
+/** The launcher activity from `cmd package resolve-activity --brief`: its last line, like `com.fullskat.watch/.MainActivity`. */
+fun parseResolvedActivity(output: String, pkg: String = WATCH_PACKAGE): String? =
+    output.lineSequence().map { it.trim() }.lastOrNull { it.startsWith("$pkg/") && it.length > pkg.length + 1 }
+
+/** Whether `am start` started the activity (or found it already in front): no error, and the start was reported. */
+fun launchSucceeded(output: String): Boolean {
+    val lines = output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+    if (lines.any { it.startsWith("Error") || it.startsWith("Exception") || it.startsWith("java.lang.") }) return false
+    return lines.any { it.startsWith("Starting: Intent") || it.startsWith("Status: ok") || it.startsWith("Warning: Activity not started") }
+}
 
 /** The Wear OS release a watch's Android API level belongs to; null when unknown. */
 fun wearOsVersion(sdk: Int): String? = when (sdk) {

@@ -36,7 +36,7 @@ own account.
 | Feature | How |
 | --- | --- |
 | Account | Sign up with the server passcode; no name or profile (a hidden random id made at install names the account on the server). Settings lists the devices on your account with their last activity (unlink any of them) and has Sign out. Being unlinked from another device returns the app to sign-up. |
-| Install the watch app | Settings → Install the watch app puts the watch app bundled in the phone app on the watch over Wi-Fi, without a computer: the phone finds the watch's wireless debugging on the network (mDNS), pairs once with the 6-digit code from *Pair new device* (the watch remembers the phone's key, kept in no-backup app storage; next time it connects straight away), shows the watch's model, Wear OS/Android version, processor and the FullSkat installed on it, and streams the APK into the package manager with a progress bar. A watch app signed with another key (e.g. a CI build with the debug key) can be replaced after a warning that the watch then has to be linked again. Android 17 asks for the local network ("Nearby devices") permission. Debug builds do not carry the watch app. |
+| Install the watch app | Settings → Install the watch app puts the watch app bundled in the phone app on the watch over Wi-Fi, without a computer: the phone finds the watch's wireless debugging on the network (mDNS), pairs once with the 6-digit code from *Pair new device* (the watch remembers the phone's key and the phone remembers the watch, both in no-backup app storage; next time it connects by itself), shows the watch's name, model, Wear OS/Android version, processor and the FullSkat installed on it, streams the APK into the package manager with a progress bar when you tap Install, and then opens the app on the watch. A watch app signed with another key (e.g. a CI build with the debug key) can be replaced after a warning that the watch then has to be linked again. Android 17 asks for the local network ("Nearby devices") permission. Debug builds do not carry the watch app. |
 | Link a watch | Settings → Link a watch: six boxes for the code the watch shows (only the code alphabet is accepted, auto-advance, paste); wrong or expired codes and too many attempts are explained. |
 | Dialogs | The account's dialogs, newest first, with a one-line preview (formulas as Unicode, drawings and code as `[drawing]`/`[code]`); new dialog button, pull to refresh, swipe to delete, long press to rename or delete. Live updates while the app is open. |
 | Chat | Your questions on the right with their photos; answers rendered like on the watch (Markdown, LaTeX, highlighted code, animated figures), with the collapsible reasoning summary and web sources (tap opens the browser, long press copies). A question that did not reach the server says so and can be resent; failed answers show the reason; usage limits show when to try again. Answers keep running if you leave the chat; Stop ends them. |
@@ -95,14 +95,18 @@ debug key when they are not set, so every build is installable.
 
 ### Installing on the watch
 
-From the phone app: Settings → Install the watch app. Prepare the watch once:
+From the phone app: Settings → Install the watch app. It goes in three stages, one at a time:
 
-1. Watch and phone on the same Wi-Fi.
-2. On the watch: Settings → System → About → Versions, tap *Software version* (or *Build number*) 7 times to unlock
-   Developer options; then Settings → Developer options → **Wireless debugging** on.
-3. Tap **Pair new device** and type the 6-digit code into the phone (the phone usually finds the address itself).
-   Pairing is needed once per watch; later the phone connects as soon as wireless debugging is on.
-4. Install or update. Afterwards turn Wireless debugging off again: it costs battery.
+1. **Pair** (once per watch). Watch and phone on the same Wi-Fi; on the watch: Settings → System → About → Versions,
+   tap *Software version* (or *Build number*) 7 times to unlock Developer options; then Settings → Developer options →
+   **Wireless debugging** on, **Pair new device**, and type the 6-digit code into the phone (the phone usually finds
+   the address itself). The phone remembers the watch (in no-backup app storage, next to the ADB key the watch now
+   trusts), so next time this stage is skipped.
+2. **Connect** — by itself: as soon as a remembered watch's wireless debugging shows up on the Wi-Fi (or answers at its
+   last address), the phone connects. Several remembered watches are listed; tap one to pick it, the cross forgets it.
+   The address can still be typed by hand where the network hides the watch.
+3. **Install** on the button (or update); then the phone opens FullSkat on the watch. Afterwards turn Wireless
+   debugging off again: it costs battery.
 
 The installer uses [libadb-android](https://github.com/MuntashirAkon/libadb-android) (Apache-2.0 option of its
 GPL-3.0-or-later / Apache-2.0 dual licence; its SPAKE2 pairing library is LGPL-3.0), Conscrypt (Apache-2.0) for

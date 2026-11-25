@@ -5,21 +5,34 @@ import com.fullskat.phone.watchinstall.AppVersion
 import com.fullskat.phone.watchinstall.InstallAction
 import com.fullskat.phone.watchinstall.InstallError
 import com.fullskat.phone.watchinstall.InstallOutcome
+import com.fullskat.phone.watchinstall.MAX_PAIRED_WATCHES
+import com.fullskat.phone.watchinstall.PairedWatch
+import com.fullskat.phone.watchinstall.WatchInfo
 import com.fullskat.phone.watchinstall.WatchService
+import com.fullskat.phone.watchinstall.attemptKey
 import com.fullskat.phone.watchinstall.classifyConnectError
 import com.fullskat.phone.watchinstall.classifyPairError
+import com.fullskat.phone.watchinstall.decodePairedWatches
+import com.fullskat.phone.watchinstall.encodePairedWatches
 import com.fullskat.phone.watchinstall.filterPairingCode
+import com.fullskat.phone.watchinstall.forget
 import com.fullskat.phone.watchinstall.hostPort
 import com.fullskat.phone.watchinstall.installAction
 import com.fullskat.phone.watchinstall.installFinished
+import com.fullskat.phone.watchinstall.launchSucceeded
+import com.fullskat.phone.watchinstall.nextConnectTarget
 import com.fullskat.phone.watchinstall.parseGetprop
 import com.fullskat.phone.watchinstall.parseHostPort
 import com.fullskat.phone.watchinstall.parseInstallOutput
 import com.fullskat.phone.watchinstall.parseInstalledVersion
+import com.fullskat.phone.watchinstall.parseResolvedActivity
+import com.fullskat.phone.watchinstall.remember
 import com.fullskat.phone.watchinstall.sameWatch
 import com.fullskat.phone.watchinstall.serialOf
 import com.fullskat.phone.watchinstall.uninstallSucceeded
+import com.fullskat.phone.watchinstall.watchDisplayName
 import com.fullskat.phone.watchinstall.watchInfo
+import com.fullskat.phone.watchinstall.watchModelName
 import com.fullskat.phone.watchinstall.wearOsVersion
 import io.github.muntashirakon.adb.AdbPairingRequiredException
 import org.junit.Assert.assertEquals
@@ -120,6 +133,7 @@ class WatchInstallTest {
             [ro.product.cpu.abilist]: [arm64-v8a,armeabi-v7a,armeabi]
             [ro.product.manufacturer]: [samsung]
             [ro.product.model]: [SM-L305F]
+            [ro.serialno]: [R5CT1234567]
             [persist.sys.empty]: []
             garbage line
             """.trimIndent(),
@@ -134,6 +148,119 @@ class WatchInstallTest {
         assertEquals(listOf("arm64-v8a", "armeabi-v7a", "armeabi"), info.abis)
         assertEquals(AppVersion("1.0.42", 42), info.installed)
         assertNull(watchInfo(props, "").installed)
+        assertEquals("R5CT1234567", info.serial)
+        assertEquals("", info.deviceName)
+        assertEquals("Samsung SM-L305F", watchDisplayName(info))
+        // `settings get global device_name`: the watch's own name, or "null" when it has none.
+        val named = watchInfo(props, dumpsys, "Galaxy Watch7 (D4F2)\n")
+        assertEquals("Galaxy Watch7 (D4F2)", watchDisplayName(named))
+        assertEquals("Samsung SM-L305F", watchModelName(named))
+        assertEquals("", watchInfo(props, dumpsys, "null\n").deviceName)
+        assertEquals("Google Pixel Watch 3", watchModelName(WatchInfo("Pixel Watch 3", "Google", "16", 36, emptyList(), null)))
+        assertEquals("Xiaomi Watch 2", watchModelName(WatchInfo("Xiaomi Watch 2", "Xiaomi", "13", 33, emptyList(), null)))
+    }
+
+    // ------------------------------------------------------------------ opening the app after the install
+
+    @Test fun launcherActivity() {
+        assertEquals(
+            "com.fullskat.watch/.MainActivity",
+            parseResolvedActivity("priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=false\ncom.fullskat.watch/.MainActivity\n"),
+        )
+        assertNull(parseResolvedActivity("No activity found\n"))
+        assertNull(parseResolvedActivity(""))
+    }
+
+    @Test fun launchResults() {
+        assertTrue(
+            launchSucceeded(
+                "Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] cmp=com.fullskat.watch/.MainActivity }\n" +
+                    "Status: ok\nLaunchState: COLD\nActivity: com.fullskat.watch/.MainActivity\nTotalTime: 912\nWaitTime: 920\nComplete\n",
+            ),
+        )
+        assertTrue(
+            launchSucceeded(
+                "Starting: Intent { cmp=com.fullskat.watch/.MainActivity }\n" +
+                    "Warning: Activity not started, its current task has been brought to the front\nStatus: ok\n",
+            ),
+        )
+        assertFalse(
+            launchSucceeded(
+                "Starting: Intent { cmp=com.fullskat.watch/.MainActivity }\nError type 3\n" +
+                    "Error: Activity class {com.fullskat.watch/com.fullskat.watch.MainActivity} does not exist.\n",
+            ),
+        )
+        assertFalse(launchSucceeded(""))
+    }
+
+    // ------------------------------------------------------------------ remembered watches
+
+    private fun paired(key: String, serviceName: String? = null, serial: String? = null, host: String = "192.168.1.23", port: Int = 0, used: Long = 0) =
+        PairedWatch(key, serviceName, serial, name = serial ?: host, host = host, port = port, pairedAt = 1, lastUsedAt = used)
+
+    @Test fun pairedWatchMatchesItsServices() {
+        val byName = paired("a", serviceName = "adb-R5CT1234567-AbCdEf")
+        assertTrue(byName.matches(WatchService("adb-R5CT1234567-AbCdEf", "192.168.1.40", 41235)))
+        assertTrue(byName.matches(WatchService("adb-R5CT1234567-AbCdEf (2)", "192.168.1.40", 41235))) // renamed on a clash
+        assertFalse(byName.matches(WatchService("adb-R9XX0000000-QwErTy", "192.168.1.23", 41235)))
+        // Connected by address first: the serial (ro.serialno) is what the service name carries.
+        val bySerial = paired("b", serial = "R5CT1234567")
+        assertTrue(bySerial.matches(WatchService("adb-R5CT1234567-AbCdEf", "10.0.0.7", 5555)))
+        assertFalse(bySerial.matches(WatchService("adb-R9XX0000000-QwErTy", "192.168.1.23", 5555)))
+        // Paired by address only: nothing but the address to go by.
+        val byHost = paired("c")
+        assertTrue(byHost.matches(WatchService("adb-R9XX0000000-QwErTy", "192.168.1.23", 41235)))
+        assertFalse(byHost.matches(WatchService("adb-R9XX0000000-QwErTy", "192.168.1.24", 41235)))
+    }
+
+    @Test fun rememberingReplacesTheSameWatch() {
+        val watch = paired("a", serviceName = "adb-R5CT1234567-AbCdEf", used = 1)
+        val other = paired("b", serial = "R9XX0000000", used = 2)
+        val list = listOf(other, watch)
+        // Paired again: a new record for the same watch replaces the old one and goes first.
+        val again = paired("c", serviceName = "adb-R5CT1234567-AbCdEf", used = 3)
+        assertEquals(listOf("c", "b"), list.remember(again).map { it.key })
+        // Updated after connecting (same key, serial learnt): still one record.
+        val updated = watch.copy(serial = "R5CT1234567", port = 41235)
+        assertEquals(listOf(updated, other), list.remember(updated))
+        // The same serial under another service name is still the same watch.
+        assertEquals(listOf("d", "a"), list.remember(paired("d", serial = "R9XX0000000")).map { it.key })
+        assertEquals(listOf(watch), list.forget(other))
+        val many = (1..12).fold(emptyList<PairedWatch>()) { acc, i -> acc.remember(paired("k$i", serial = "S$i")) }
+        assertEquals(MAX_PAIRED_WATCHES, many.size)
+        assertEquals("k12", many.first().key)
+    }
+
+    @Test fun pairedWatchesSurviveSaving() {
+        val list = listOf(
+            PairedWatch("a", "adb-R5CT1234567-AbCdEf", "R5CT1234567", "Galaxy Watch7 (D4F2)", "192.168.1.23", 41235, 100, 200),
+            PairedWatch("b", null, null, "192.168.1.40", "192.168.1.40", 0, 300, 300),
+        )
+        assertEquals(list, decodePairedWatches(encodePairedWatches(list)))
+        assertEquals(emptyList<PairedWatch>(), decodePairedWatches("not json"))
+        assertEquals(emptyList<PairedWatch>(), decodePairedWatches(""))
+        // A broken record is skipped, the rest is kept.
+        assertEquals(listOf("ok"), decodePairedWatches("""[{"name":"x"},{"key":"ok","name":"W","host":"10.0.0.2"}]""").map { it.key })
+    }
+
+    @Test fun connectsToTheMostRecentWatchSeenFirst() {
+        val recent = paired("a", serviceName = "adb-AAAA-1", used = 9)
+        val older = paired("b", serviceName = "adb-BBBB-2", used = 1)
+        val services = listOf(
+            WatchService("adb-BBBB-2", "192.168.1.30", 40001),
+            WatchService("adb-AAAA-1", "192.168.1.20", 40002),
+            WatchService("adb-CCCC-3", "192.168.1.50", 40003), // not paired: never picked
+        )
+        val (service, watch) = nextConnectTarget(services, listOf(recent, older), emptySet())!!
+        assertEquals("a", watch.key)
+        assertEquals(40002, service.port)
+        // Tried already: the next watch.
+        assertEquals("b", nextConnectTarget(services, listOf(recent, older), setOf(attemptKey("192.168.1.20", 40002)))!!.second.key)
+        // Wireless debugging switched on again: a new port is a new attempt.
+        val restarted = services + WatchService("adb-AAAA-1", "192.168.1.20", 40100)
+        assertEquals(40100, nextConnectTarget(restarted, listOf(recent), setOf(attemptKey("192.168.1.20", 40002)))!!.first.port)
+        assertNull(nextConnectTarget(services, listOf(recent, older), setOf(attemptKey("192.168.1.20", 40002), attemptKey("192.168.1.30", 40001))))
+        assertNull(nextConnectTarget(services, emptyList(), emptySet()))
     }
 
     @Test fun wearOsReleases() {

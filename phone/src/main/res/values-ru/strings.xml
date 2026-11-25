@@ -155,17 +155,14 @@
     <!-- Install the watch app (over wireless debugging) -->
     <string name="iw_title">Установить приложение на часы</string>
     <string name="iw_row_desc">По Wi-Fi, прямо с этого телефона</string>
-    <string name="iw_intro">Устанавливает FullSkat на часы по Wi-Fi. Нужно один раз и потом для обновлений.</string>
     <string name="iw_permission">Разрешите доступ к устройствам в вашей сети Wi-Fi, чтобы телефон нашёл часы и смог к ним подключиться.</string>
     <string name="iw_permission_denied">Без этого телефон не сможет связаться с часами. Разрешите «Устройства поблизости» в настройках приложения.</string>
     <string name="iw_allow">Разрешить</string>
     <string name="iw_open_settings">Открыть настройки</string>
-    <string name="iw_step_prepare">Подготовьте часы</string>
     <string name="iw_prepare_wifi">Подключите часы и телефон к одной сети Wi-Fi.</string>
     <string name="iw_prepare_dev">На часах: Настройки → Система → О часах → Версии, нажмите 7 раз на «Версия ПО» (или «Номер сборки»), чтобы открыть параметры разработчика.</string>
     <string name="iw_prepare_wireless">Настройки → Параметры разработчика → включите «Отладка по Wi-Fi».</string>
     <string name="iw_prepare_pair">Откройте «Отладка по Wi-Fi» и нажмите «Подключить новое устройство»: часы покажут код из 6 цифр.</string>
-    <string name="iw_prepare_done">Отладка по Wi-Fi включена</string>
     <string name="iw_step_pair">Сопряжение</string>
     <string name="iw_pair_searching">Ищем часы с открытым экраном «Подключить новое устройство»…</string>
     <string name="iw_pair_manual">Или введите IP-адрес и порт, указанные под кодом.</string>
@@ -175,15 +172,13 @@
     <string name="iw_code">Код сопряжения</string>
     <string name="iw_pair_button">Выполнить сопряжение</string>
     <string name="iw_pairing">Сопряжение…</string>
-    <string name="iw_paired">Сопряжено: часы запомнили этот телефон, в следующий раз шаг не понадобится.</string>
-    <string name="iw_pair_once">Нужно один раз для каждых часов.</string>
-    <string name="iw_not_paired">Эти часы ещё не сопряжены с телефоном.</string>
+    <string name="iw_not_paired">Часы больше не принимают этот телефон (сопряжение отменено на часах). Выполните сопряжение заново.</string>
     <string name="iw_step_connect">Соединение</string>
     <string name="iw_connect_address">IP-адрес и порт</string>
     <string name="iw_connect_hint">Указаны на экране «Отладка по Wi-Fi» на часах. Порт меняется при каждом включении.</string>
     <string name="iw_connect_button">Соединиться</string>
     <string name="iw_connecting">Соединение с %1$s…</string>
-    <string name="iw_disconnect">Разъединить</string>
+    <string name="iw_disconnect">Другие часы</string>
     <string name="iw_watch_system">Wear OS %1$s · Android %2$s (API %3$d)</string>
     <string name="iw_watch_system_android">Android %1$s (API %2$d)</string>
     <string name="iw_watch_abis">Процессор: %1$s</string>
@@ -194,7 +189,6 @@
     <string name="iw_bundled">В приложении телефона: FullSkat %1$s · %2$s</string>
     <string name="iw_not_bundled">Приложение для часов есть только в релизных сборках приложения телефона. Это отладочная сборка: установите приложение на часы через adb.</string>
     <string name="iw_broken">Не удаётся прочитать приложение для часов. Переустановите приложение телефона.</string>
-    <string name="iw_connect_first">Сначала соединитесь с часами.</string>
     <string name="iw_install_button">Установить</string>
     <string name="iw_update_button">Обновить до %1$s</string>
     <string name="iw_reinstall_button">Переустановить</string>
@@ -221,11 +215,30 @@
     <string name="iw_adb_timeout">Часы не ответили вовремя. Не давайте экрану погаснуть и попробуйте снова.</string>
     <string name="iw_adb_unreachable">Не удаётся связаться с часами. Телефон и часы в одной сети Wi-Fi?</string>
     <string name="iw_adb_refused">По этому адресу и порту никто не отвечает. Сверьте их с часами: порт меняется при каждом включении.</string>
-    <string name="iw_adb_not_paired">Часы не приняли этот телефон. Сначала выполните сопряжение (шаг 2), затем соединитесь.</string>
+    <string name="iw_adb_not_paired">Часы не приняли этот телефон: выполните сопряжение заново.</string>
     <string name="iw_adb_lost">Соединение с часами прервалось.</string>
     <string name="iw_adb_no_tls">Защищённые соединения недоступны на этом телефоне.</string>
     <string name="iw_adb_bad_address">Проверьте адрес: он выглядит так: 192.168.1.23:41235.</string>
     <string name="iw_adb_other">Что-то пошло не так.</string>
+    <string name="iw_pair_intro">Один раз для каждых часов: потом телефон их помнит и соединяется сам.</string>
+    <string name="iw_howto">Как включить отладку по Wi-Fi</string>
+    <string name="iw_paired_summary">Сопряжено: %1$s</string>
+    <string name="iw_back_to_paired">К сопряжённым часам</string>
+    <string name="iw_connect_waiting">Начнётся само после сопряжения</string>
+    <string name="iw_connected_summary">%1$s · %2$s</string>
+    <string name="iw_paired_watches">Сопряжённые часы</string>
+    <string name="iw_connect_searching">Ищем %1$s в сети Wi-Fi…</string>
+    <string name="iw_connect_searching_any">Ищем ваши часы в сети Wi-Fi…</string>
+    <string name="iw_connect_slow">Пока не найдено. Включите на часах «Отладку по Wi-Fi» (Настройки → Параметры разработчика); часы и телефон должны быть в одной сети Wi-Fi.</string>
+    <string name="iw_pick_watch">Нажмите на часы, чтобы соединиться.</string>
+    <string name="iw_manual">Ввести адрес вручную</string>
+    <string name="iw_pair_new">Сопрячь новые часы</string>
+    <string name="iw_pair_again">Сопрячь заново</string>
+    <string name="iw_forget">Забыть %1$s</string>
+    <string name="iw_opening">Открываем FullSkat на часах…</string>
+    <string name="iw_done_opened_relink">Он открыт на часах и показывает код: нажмите «Подключить часы» ниже и введите его.</string>
+    <string name="iw_done_opened_updated">Он открыт на часах и остаётся подключённым к аккаунту.</string>
+    <string name="iw_not_bundled_short">Нет в этой сборке приложения</string>
 
     <!-- Devices -->
     <string name="devices">Устройства</string>

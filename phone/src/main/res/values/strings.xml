@@ -157,17 +157,14 @@
     <!-- Install the watch app (over wireless debugging) -->
     <string name="iw_title">Install the watch app</string>
     <string name="iw_row_desc">Over Wi-Fi, straight from this phone</string>
-    <string name="iw_intro">Puts the FullSkat watch app on your watch over Wi-Fi. Needed once, and again for updates.</string>
     <string name="iw_permission">Allow access to devices on your Wi-Fi so this phone can find and reach the watch.</string>
     <string name="iw_permission_denied">Without it this phone cannot reach the watch. Allow Nearby devices in the app\'s settings.</string>
     <string name="iw_allow">Allow</string>
     <string name="iw_open_settings">Open settings</string>
-    <string name="iw_step_prepare">Prepare the watch</string>
     <string name="iw_prepare_wifi">Connect the watch and this phone to the same Wi-Fi.</string>
     <string name="iw_prepare_dev">On the watch: Settings → System → About → Versions, tap Software version (or Build number) 7 times to unlock Developer options.</string>
     <string name="iw_prepare_wireless">Settings → Developer options → turn on Wireless debugging.</string>
     <string name="iw_prepare_pair">Open Wireless debugging and tap Pair new device: the watch shows a 6-digit code.</string>
-    <string name="iw_prepare_done">Wireless debugging is on</string>
     <string name="iw_step_pair">Pair</string>
     <string name="iw_pair_searching">Looking for a watch showing Pair new device…</string>
     <string name="iw_pair_manual">Or type the address and port shown under the code.</string>
@@ -177,15 +174,13 @@
     <string name="iw_code">Pairing code</string>
     <string name="iw_pair_button">Pair</string>
     <string name="iw_pairing">Pairing…</string>
-    <string name="iw_paired">Paired: the watch remembers this phone, next time this step is skipped.</string>
-    <string name="iw_pair_once">Needed once per watch.</string>
-    <string name="iw_not_paired">This watch is not paired with the phone yet.</string>
+    <string name="iw_not_paired">The watch no longer accepts this phone (it was unpaired on the watch). Pair it again.</string>
     <string name="iw_step_connect">Connect</string>
     <string name="iw_connect_address">IP address and port</string>
     <string name="iw_connect_hint">Shown on the watch\'s Wireless debugging screen. The port changes each time it is turned on.</string>
     <string name="iw_connect_button">Connect</string>
     <string name="iw_connecting">Connecting to %1$s…</string>
-    <string name="iw_disconnect">Disconnect</string>
+    <string name="iw_disconnect">Use another watch</string>
     <string name="iw_watch_system">Wear OS %1$s · Android %2$s (API %3$d)</string>
     <string name="iw_watch_system_android">Android %1$s (API %2$d)</string>
     <string name="iw_watch_abis">Processor: %1$s</string>
@@ -196,7 +191,6 @@
     <string name="iw_bundled">In this phone app: FullSkat %1$s · %2$s</string>
     <string name="iw_not_bundled">The watch app is only bundled in release builds of the phone app. This is a debug build: install the watch app with adb instead.</string>
     <string name="iw_broken">The bundled watch app cannot be read. Reinstall the phone app.</string>
-    <string name="iw_connect_first">Connect to the watch first.</string>
     <string name="iw_install_button">Install</string>
     <string name="iw_update_button">Update to %1$s</string>
     <string name="iw_reinstall_button">Reinstall</string>
@@ -223,11 +217,30 @@
     <string name="iw_adb_timeout">The watch did not answer in time. Keep its screen on and try again.</string>
     <string name="iw_adb_unreachable">Can\'t reach the watch. Are the phone and the watch on the same Wi-Fi?</string>
     <string name="iw_adb_refused">Nothing answers at this address and port. Check them on the watch: the port changes each time.</string>
-    <string name="iw_adb_not_paired">The watch did not accept this phone. Pair it first (step 2), then connect.</string>
+    <string name="iw_adb_not_paired">The watch did not accept this phone: pair it again.</string>
     <string name="iw_adb_lost">The connection to the watch was lost.</string>
     <string name="iw_adb_no_tls">Secure connections are not available on this phone.</string>
     <string name="iw_adb_bad_address">Check the address: it looks like 192.168.1.23:41235.</string>
     <string name="iw_adb_other">Something went wrong.</string>
+    <string name="iw_pair_intro">Once per watch: afterwards this phone remembers it and connects by itself.</string>
+    <string name="iw_howto">How to turn on wireless debugging</string>
+    <string name="iw_paired_summary">Paired: %1$s</string>
+    <string name="iw_back_to_paired">Use a paired watch</string>
+    <string name="iw_connect_waiting">Starts by itself after pairing</string>
+    <string name="iw_connected_summary">%1$s · %2$s</string>
+    <string name="iw_paired_watches">Paired watches</string>
+    <string name="iw_connect_searching">Looking for %1$s on the Wi-Fi…</string>
+    <string name="iw_connect_searching_any">Looking for your watches on the Wi-Fi…</string>
+    <string name="iw_connect_slow">Not found yet. On the watch, turn on Wireless debugging (Settings → Developer options) and keep it on the same Wi-Fi as this phone.</string>
+    <string name="iw_pick_watch">Tap a watch to connect.</string>
+    <string name="iw_manual">Enter the address by hand</string>
+    <string name="iw_pair_new">Pair a new watch</string>
+    <string name="iw_pair_again">Pair again</string>
+    <string name="iw_forget">Forget %1$s</string>
+    <string name="iw_opening">Opening FullSkat on the watch…</string>
+    <string name="iw_done_opened_relink">It is open on the watch and shows a code: tap Link a watch below and type it in.</string>
+    <string name="iw_done_opened_updated">It is open on the watch and stays linked to your account.</string>
+    <string name="iw_not_bundled_short">Not in this build of the phone app</string>
 
     <!-- Devices -->
     <string name="devices">Devices</string>

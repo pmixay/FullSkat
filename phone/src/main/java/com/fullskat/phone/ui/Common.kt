@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -146,11 +147,13 @@ fun copyToClipboard(context: Context, text: String, toast: Int = R.string.copied
 
 /** The small amber title over a group of settings. */
 @Composable
-fun SectionHeader(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text,
-        color = MaterialTheme.colorScheme.primary,
-        style = MaterialTheme.typography.labelLarge,
-        modifier = modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp),
-    )
+fun SectionHeader(text: String, modifier: Modifier = Modifier, icon: Painter? = null, iconDescription: String? = null) {
+    Row(
+        modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(text, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+        if (icon != null) Icon(icon, contentDescription = iconDescription, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+    }
 }

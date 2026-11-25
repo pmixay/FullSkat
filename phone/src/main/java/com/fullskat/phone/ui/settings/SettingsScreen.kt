@@ -87,7 +87,14 @@ fun SettingsScreen(
     ) { padding ->
         val s = session ?: return@Scaffold
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { SectionHeader(stringResource(R.string.settings_assistant)) }
+            item {
+                // These settings live on the server and apply on the watch too: the sync icon says so (and reads it out).
+                SectionHeader(
+                    stringResource(R.string.settings_assistant),
+                    icon = painterResource(R.drawable.ic_sync),
+                    iconDescription = stringResource(R.string.settings_shared_note),
+                )
+            }
             item {
                 // The model name drops down the list right here (no separate screen).
                 ListItem(
@@ -121,14 +128,6 @@ fun SettingsScreen(
                     checked = s.figures,
                     enabled = s.info.figures,
                     onChange = vm::setFigures,
-                )
-            }
-            item {
-                Text(
-                    stringResource(R.string.settings_shared_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Ember.label,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
 

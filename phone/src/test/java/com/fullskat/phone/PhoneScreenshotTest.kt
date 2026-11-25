@@ -58,6 +58,7 @@ import com.fullskat.phone.ui.onboarding.SignUpError
 import com.fullskat.phone.ui.settings.ConnectionStatus
 import com.fullskat.phone.ui.settings.DevicesContent
 import com.fullskat.phone.ui.settings.DevicesState
+import com.fullskat.phone.ui.settings.InstallStage
 import com.fullskat.phone.ui.settings.InstallStatus
 import com.fullskat.phone.ui.settings.InstallWatchContent
 import com.fullskat.phone.ui.settings.InstallerActions
@@ -67,6 +68,7 @@ import com.fullskat.phone.watchinstall.AdbProblem
 import com.fullskat.phone.watchinstall.AppVersion
 import com.fullskat.phone.watchinstall.BundledApk
 import com.fullskat.phone.watchinstall.InstallError
+import com.fullskat.phone.watchinstall.PairedWatch
 import com.fullskat.phone.watchinstall.WatchInfo
 import com.fullskat.phone.watchinstall.WatchService
 import com.fullskat.phone.ui.settings.LinkState
@@ -508,13 +510,14 @@ val area = PI * r * r // 28.27
     private val bundled = BundledApk.Ready(AppVersion("1.0.42", 42), minSdk = 33, file = File("fullskat-watch.apk"), size = 43_400_000)
     private val pairService = WatchService("adb-R5CT1234567-AbCdEf", "192.168.1.23", 37145)
     private val connectService = WatchService("adb-R5CT1234567-AbCdEf", "192.168.1.23", 41235)
-    private val watch = WatchInfo("SM-L305F", "samsung", "16", 36, listOf("arm64-v8a", "armeabi-v7a", "armeabi"), AppVersion("1.0.41", 41))
-    private val connected = InstallerState(
-        bundled = bundled,
-        connectAddress = connectService.address,
-        pair = PairStatus.Paired,
-        connection = ConnectionStatus.Connected(watch),
+    private val watch = WatchInfo(
+        "SM-L305F", "samsung", "16", 36, listOf("arm64-v8a", "armeabi-v7a", "armeabi"), AppVersion("1.0.41", 41),
+        serial = "R5CT1234567", deviceName = "Galaxy Watch7 (D4F2)",
     )
+    private val savedWatch = PairedWatch("w1", "adb-R5CT1234567-AbCdEf", "R5CT1234567", "Galaxy Watch7 (D4F2)", "192.168.1.23", 41235, 0, 0)
+    private val savedOther = PairedWatch("w2", "adb-R9XA7654321-QwErTy", "R9XA7654321", "Galaxy Watch6 Classic (8B1C)", "192.168.1.31", 38411, 0, 0)
+    private val connecting = InstallerState(bundled = bundled, step = InstallStage.CONNECT, saved = listOf(savedWatch))
+    private val connected = connecting.copy(target = savedWatch, connectAddress = connectService.address, connection = ConnectionStatus.Connected(watch))
 
     /**
      * [toEnd]: shown scrolled to the bottom. (A scroll state that starts past the end settles on it; scrolling by test
@@ -525,39 +528,52 @@ val area = PI * r * r // 28.27
         InstallWatchContent(state, object : InstallerActions {}, {}, {}, {}, scroll)
     }
 
-    @Test fun install_instructions() = installer("30_install_instructions", InstallerState(bundled = bundled))
+    // Stage 1: pair (a new watch; the how-to is open until the watch shows up on the Wi-Fi).
+    @Test fun install_pair_first() = installer("30_install_pair_first", InstallerState(bundled = bundled))
 
     @Test fun install_pair() = installer(
         "31_install_pair",
-        InstallerState(
-            bundled = bundled,
-            pairServices = listOf(pairService),
-            pairHost = pairService.host,
-            pairPort = pairService.port.toString(),
-            pairCode = "4829",
-            notPaired = true,
-        ),
+        InstallerState(bundled = bundled, pairServices = listOf(pairService), pairHost = pairService.host, pairPort = pairService.port.toString(), pairCode = "4829"),
+        toEnd = true,
     )
 
     @Test fun install_pair_wrong() = installer(
         "32_install_pair_wrong",
         InstallerState(
             bundled = bundled,
+            saved = listOf(savedOther), // pairing another watch: the way back to the paired one is offered
             pairServices = listOf(pairService),
-            connectServices = listOf(connectService),
             pairHost = pairService.host,
             pairPort = pairService.port.toString(),
-            connectAddress = connectService.address,
             pair = PairStatus.Failed(AdbProblem.WRONG_CODE),
         ),
+        toEnd = true,
     )
 
-    @Test fun install_connected() = installer("33_install_connected", connected)
+    // Stage 2: connect, by itself, to the watch paired before.
+    @Test fun install_connect() = installer("33_install_connect", connecting)
 
-    @Test fun install_progress() = installer("34_install_progress", connected.copy(install = InstallStatus.Uploading(18_200_000, bundled.size)))
+    @Test fun install_connect_list_slow() = installer("34_install_connect_list_slow", connecting.copy(saved = listOf(savedWatch, savedOther), slow = true))
+
+    @Test fun install_connecting() = installer(
+        "35_install_connecting",
+        connecting.copy(target = savedWatch, connection = ConnectionStatus.Working, connectAddress = connectService.address),
+    )
+
+    @Test fun install_not_paired() = installer(
+        "36_install_not_paired",
+        connecting.copy(target = savedWatch, connection = ConnectionStatus.Failed(AdbProblem.NOT_PAIRED), notPaired = true),
+    )
+
+    // Stage 3: install on the button, then open it on the watch.
+    @Test fun install_ready() = installer("37_install_ready", connected)
+
+    @Test fun install_progress() = installer("38_install_progress", connected.copy(install = InstallStatus.Uploading(18_200_000, bundled.size)))
+
+    @Test fun install_opening() = installer("39_install_opening", connected.copy(install = InstallStatus.Opening))
 
     @Test fun install_mismatch() = installer(
-        "35_install_mismatch",
+        "40_install_mismatch",
         connected.copy(
             install = InstallStatus.Failed(
                 InstallError.UPDATE_INCOMPATIBLE,
@@ -567,25 +583,28 @@ val area = PI * r * r // 28.27
         toEnd = true,
     )
 
-    @Test fun install_done() = installer("36_install_done", connected.copy(install = InstallStatus.Done(AppVersion("1.0.42", 42), relink = true)))
-
-    @Test fun install_not_bundled() = installer(
-        "37_install_not_bundled",
-        InstallerState(bundled = BundledApk.NotBundled, connectServices = listOf(connectService), connectAddress = connectService.address),
-        toEnd = true,
+    @Test fun install_done() = installer(
+        "41_install_done",
+        connected.copy(install = InstallStatus.Done(AppVersion("1.0.42", 42), relink = true, opened = true)),
     )
 
-    @Test fun install_permission() = installer("38_install_permission", InstallerState(bundled = bundled, needsPermission = true))
+    @Test fun install_not_bundled() = installer("42_install_not_bundled", InstallerState(bundled = BundledApk.NotBundled))
+
+    @Test fun install_permission() = installer("43_install_permission", InstallerState(bundled = bundled, needsPermission = true))
 
     @Config(qualifiers = "+ru")
     @Test fun install_pair_ru() = installer(
-        "39_install_pair_ru",
+        "44_install_pair_ru",
         InstallerState(bundled = bundled, pairServices = listOf(pairService), pairHost = pairService.host, pairPort = pairService.port.toString(), pairCode = "482913", pair = PairStatus.Working),
+        toEnd = true,
     )
 
     @Config(qualifiers = "+ru")
+    @Test fun install_connect_ru() = installer("45_install_connect_ru", connecting.copy(saved = listOf(savedWatch, savedOther), slow = true))
+
+    @Config(qualifiers = "+ru")
     @Test fun install_mismatch_ru() = installer(
-        "40_install_mismatch_ru",
+        "46_install_mismatch_ru",
         connected.copy(install = InstallStatus.Failed(InstallError.UPDATE_INCOMPATIBLE, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")),
         toEnd = true,
     )
