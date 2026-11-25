@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -73,15 +74,28 @@ class ScreenshotTest {
     private val container get() = FullSkatApp.container(ApplicationProvider.getApplicationContext())
     private val dir = File(System.getProperty("fullskat.screenshots.dir") ?: "build/screenshots").also { it.mkdirs() }
 
-    private fun shot(name: String, content: @Composable () -> Unit) {
+    /** Renders [content] and saves it as [name]; with [ready], only once that text is on screen. */
+    private fun shot(name: String, ready: String? = null, content: @Composable () -> Unit) {
         compose.mainClock.autoAdvance = false // spinners and the level ring animate forever
         compose.setContent {
             FullSkatTheme {
                 AppScaffold { Box(Modifier.fillMaxSize().background(Tokens.background)) { content() } }
             }
         }
+        ready?.let(::awaitText)
         compose.mainClock.advanceTimeBy(600)
         compose.onRoot().captureRoboImage(File(dir, "$name.png").path)
+    }
+
+    /**
+     * Waits (up to 10 s of real time) until [text] is on screen. Messages come from Room, which delivers them from its
+     * own thread whenever it gets to it, not on the test's clock: a slow CI runner showed an empty chat after 600 ms.
+     */
+    private fun awaitText(text: String) {
+        compose.waitUntil(timeoutMillis = 10_000) {
+            if (!compose.mainClock.autoAdvance) compose.mainClock.advanceTimeByFrame()
+            compose.onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -136,12 +150,12 @@ class ScreenshotTest {
 
     @Test fun dialogs_list_top() {
         seedMany()
-        shot("17_dialogs_list_top") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        shot("17_dialogs_list_top", ready = "Какая завтра погода") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
     }
 
     @Test fun dialogs_list_scrolled() {
         seedMany()
-        shot("18_dialogs_list_scrolled") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        shot("18_dialogs_list_scrolled", ready = "Какая завтра погода") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
         compose.onRoot().performTouchInput { swipeUp(durationMillis = 400) }
         compose.mainClock.advanceTimeBy(600)
         compose.onRoot().captureRoboImage(File(dir, "18_dialogs_list_scrolled.png").path)
@@ -149,7 +163,7 @@ class ScreenshotTest {
 
     @Test fun dialogs_list_end() {
         seedMany()
-        shot("19_dialogs_list_end") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        shot("19_dialogs_list_end", ready = "Какая завтра погода") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
         repeat(6) { swipeUpTwice() }
         compose.onRoot().captureRoboImage(File(dir, "19_dialogs_list_end.png").path)
     }
@@ -191,19 +205,19 @@ class ScreenshotTest {
             dao.upsertMessage(MessageEntity(id = "pm2", dialogId = "p1", role = Roles.ASSISTANT, content = "Кот породы **мейн-кун** на подоконнике.", createdAt = now - 1_000))
             "p1"
         }
-        shot("21_chat_photo") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("21_chat_photo", ready = "на подоконнике") { ChatScreen(AppViewModel(container), id, autoListen = false) }
     }
 
     @Test fun dialogs() {
         seed()
-        shot("05_dialogs") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
+        shot("05_dialogs", ready = "Какая завтра погода") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
     }
 
     @Test fun dialogs_empty() = shot("06_dialogs_empty") { DialogsScreen(AppViewModel(container), {}, {}, {}) }
 
     @Test fun chat_answer() {
         val id = seed()
-        shot("07_chat_answer") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("07_chat_answer", ready = "облачно") { ChatScreen(AppViewModel(container), id, autoListen = false) }
     }
 
     @Test fun chat_empty() = shot("08_chat_empty") { ChatScreen(AppViewModel(container), "new", autoListen = false) }
@@ -212,7 +226,7 @@ class ScreenshotTest {
         val id = seed()
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Listening("Какая завтра погода в Москве и нужен ли зонт", 0.35f, true)
-        shot("09_chat_listening") { ChatScreen(vm, id, autoListen = false) }
+        shot("09_chat_listening", ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun chat_listening_long() {
@@ -223,28 +237,28 @@ class ScreenshotTest {
                 "а на закате становится красным, и чем это отличается от рассеяния на облаках и тумане",
             0.35f, true,
         )
-        shot("22_chat_listening_long") { ChatScreen(vm, id, autoListen = false) }
+        shot("22_chat_listening_long", ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun chat_listening_silent() {
         val id = seed()
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Listening("", 0f, false)
-        shot("10_chat_listening_silent") { ChatScreen(vm, id, autoListen = false) }
+        shot("10_chat_listening_silent", ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun chat_thinking() {
         val id = seed()
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Thinking
-        shot("11_chat_thinking") { ChatScreen(vm, id, autoListen = false) }
+        shot("11_chat_thinking", ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun chat_error() {
         val id = seed()
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Failed(ErrorKind.NO_CONNECTION, null)
-        shot("12_chat_error") { ChatScreen(vm, id, autoListen = false) }
+        shot("12_chat_error", ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     @Test fun settings() = shot("13_settings") { SettingsScreen(AppViewModel(container), {}, {}, {}) }
@@ -253,12 +267,12 @@ class ScreenshotTest {
 
     @Test fun chat_thinking_collapsed() {
         val id = seedThinking()
-        shot("15_chat_thinking_collapsed") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("15_chat_thinking_collapsed", ready = "Thinking") { ChatScreen(AppViewModel(container), id, autoListen = false) }
     }
 
     @Test fun chat_thinking_expanded() {
         val id = seedThinking()
-        shot("16_chat_thinking_expanded") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("16_chat_thinking_expanded", ready = "Thinking") { ChatScreen(AppViewModel(container), id, autoListen = false) }
         compose.mainClock.autoAdvance = true // no endless animation on this screen
         compose.onNodeWithText("Thinking").performClick()
         compose.waitForIdle()
@@ -269,7 +283,7 @@ class ScreenshotTest {
 
     @Test fun chat_scrolled_up() {
         seedLong()
-        shot("21_chat_scrolled_up") { ChatScreen(AppViewModel(container), "long", autoListen = false) }
+        shot("21_chat_scrolled_up", ready = "Ответ номер 5") { ChatScreen(AppViewModel(container), "long", autoListen = false) }
         compose.mainClock.autoAdvance = true
         compose.onRoot().performTouchInput { swipeDown() }
         compose.waitForIdle()
@@ -330,7 +344,7 @@ class ScreenshotTest {
         val id = seed()
         val vm = AppViewModel(container)
         turnOf(vm).value = TurnState.Failed(kind, null, retryAfterSec)
-        shot(name) { ChatScreen(vm, id, autoListen = false) }
+        shot(name, ready = "облачно") { ChatScreen(vm, id, autoListen = false) }
     }
 
     // ---- web sources under an answer ----
@@ -357,12 +371,12 @@ class ScreenshotTest {
 
     @Test fun chat_sources_collapsed() {
         val id = seedSources()
-        shot("31_chat_sources_collapsed") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("31_chat_sources_collapsed", ready = "Sources (3)") { ChatScreen(AppViewModel(container), id, autoListen = false) }
     }
 
     @Test fun chat_sources_expanded() {
         val id = seedSources()
-        shot("32_chat_sources_expanded") { ChatScreen(AppViewModel(container), id, autoListen = false) }
+        shot("32_chat_sources_expanded", ready = "Sources (3)") { ChatScreen(AppViewModel(container), id, autoListen = false) }
         compose.mainClock.autoAdvance = true // no endless animation on this screen
         compose.onNodeWithText("Sources (3)").performClick()
         compose.waitForIdle()
