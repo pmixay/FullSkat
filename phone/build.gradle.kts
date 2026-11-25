@@ -116,6 +116,8 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
+        // BouncyCastle's post-quantum tables and certificate-path report texts (1.4 MB): the installer uses neither.
+        resources.excludes += setOf("org/bouncycastle/pqc/**", "org/bouncycastle/x509/*.properties", "org/bouncycastle/pkix/*.properties")
         // Conscrypt's TLS library is stored compressed (a smaller APK); the installer unpacks only the phone's own ABI.
         jniLibs.useLegacyPackaging = true
     }
