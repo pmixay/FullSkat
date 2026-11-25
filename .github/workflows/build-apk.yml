@@ -46,6 +46,14 @@ jobs:
           # Written on every branch, so later runs reuse downloaded dependencies instead of hitting Maven Central again.
           cache-read-only: false
 
+      # Robolectric's Android runtime jars (200+ MB) are downloaded by Robolectric itself into ~/.m2, outside Gradle's
+      # cache: kept here so a run does not fetch them again (from Google's Maven Central mirror, see build.gradle.kts).
+      - uses: actions/cache@v5
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ hashFiles('app/build.gradle.kts', 'core/build.gradle.kts', 'phone/build.gradle.kts') }}
+          restore-keys: robolectric-
+
       # Optional release signing. Add the secrets below to sign with your own key;
       # without them the APK is signed with the debug key and still installs on a watch.
       - name: Prepare signing key
