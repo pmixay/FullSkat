@@ -7,6 +7,9 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        // Google's mirror of Maven Central first: Maven Central rate-limits shared CI runners (HTTP 429), which
+        // failed builds while downloading large test artifacts. Maven Central itself stays as the fallback.
+        maven("https://maven-central.storage-download.googleapis.com/maven2/")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -15,6 +18,9 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
+        // Google's mirror of Maven Central first: Maven Central rate-limits shared CI runners (HTTP 429), which
+        // failed builds while downloading large test artifacts. Maven Central itself stays as the fallback.
+        maven("https://maven-central.storage-download.googleapis.com/maven2/")
         mavenCentral()
         // sherpa-onnx (on-device speech recognition) is published only as an AAR on GitHub releases.
         exclusiveContent {

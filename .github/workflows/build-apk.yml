@@ -43,7 +43,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic # MIT-licensed actions/cache wrapper, free for all repositories
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          # Written on every branch, so later runs reuse downloaded dependencies instead of hitting Maven Central again.
+          cache-read-only: false
 
       # Optional release signing. Add the secrets below to sign with your own key;
       # without them the APK is signed with the debug key and still installs on a watch.
