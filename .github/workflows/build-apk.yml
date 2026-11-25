@@ -78,7 +78,12 @@ jobs:
       - name: Screenshots
         if: ${{ startsWith(github.ref, 'refs/heads/claude/') }}
         continue-on-error: true
-        run: ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' --tests 'com.fullskat.watch.RichTextScreenshotTest' --tests 'com.fullskat.watch.RichChatScreenshotTest' --tests 'com.fullskat.watch.FigureScreenshotTest' :phone:testDebugUnitTest --tests 'com.fullskat.phone.PhoneScreenshotTest' -Pscreenshots --no-daemon --console=plain
+        # Robolectric's native runtime now and then aborts the JVM while it starts ("JniConstants: Class not found"): try twice.
+        run: |
+          for attempt in 1 2; do
+            ./gradlew :app:testDebugUnitTest --tests 'com.fullskat.watch.ScreenshotTest' --tests 'com.fullskat.watch.RichTextScreenshotTest' --tests 'com.fullskat.watch.RichChatScreenshotTest' --tests 'com.fullskat.watch.FigureScreenshotTest' :phone:testDebugUnitTest --tests 'com.fullskat.phone.PhoneScreenshotTest' -Pscreenshots --rerun --no-daemon --console=plain && exit 0
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v7
         if: ${{ always() && startsWith(github.ref, 'refs/heads/claude/') }}

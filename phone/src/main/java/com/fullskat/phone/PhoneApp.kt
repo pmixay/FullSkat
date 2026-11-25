@@ -77,13 +77,17 @@ class PhoneContainer(context: Context) {
     internal fun onBackground() = core.events.stop()
 }
 
-class PhoneApp : Application() {
+open class PhoneApp : Application() {
     lateinit var container: PhoneContainer
         private set
+
+    /** Live events and a refresh whenever the app comes to the foreground; off in screenshot tests (no server there). */
+    protected open val followsForeground: Boolean = true
 
     override fun onCreate() {
         super.onCreate()
         container = PhoneContainer(this)
+        if (!followsForeground) return
         // Live events only while the app is on screen: nothing keeps a connection open in the background.
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStart(owner: LifecycleOwner) = container.onForeground()

@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.fullskat.core.db.DialogEntity
 import com.fullskat.core.db.MessageEntity
 import com.fullskat.core.net.MessageStatus
+import com.fullskat.core.net.Prefs
 import com.fullskat.core.session.SessionState
 import com.fullskat.phone.PhoneContainer
 import com.fullskat.phone.chat.Draft
@@ -102,6 +103,12 @@ class ChatViewModel(private val app: PhoneContainer, val dialogId: String) : Vie
     }
 
     fun dismissError() = app.turns.dismiss(dialogId)
+
+    /** Picks the model for this and every later question (shared with the watch); the server's default clears the choice. */
+    fun setModel(model: String) = viewModelScope.launch {
+        if (model == session.value?.info?.model) core.sync.putPrefs(Prefs(), clear = setOf("model"))
+        else core.sync.putPrefs(Prefs(model = model))
+    }
 
     fun deleteMessage(id: String) = viewModelScope.launch { core.sync.deleteMessage(id) }
 

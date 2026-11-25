@@ -115,7 +115,6 @@
     <!-- Settings -->
     <string name="settings_assistant">Assistant</string>
     <string name="settings_model">Model</string>
-    <string name="settings_model_note">The model, effort, web search and drawings are shared with your watch. The rings show each provider\'s budget left.</string>
     <string name="settings_effort">Thinking effort</string>
     <string name="settings_web_search">Web search</string>
     <string name="settings_web_search_desc">Look up news, weather, prices and other fresh facts</string>

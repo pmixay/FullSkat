@@ -75,6 +75,7 @@ import com.fullskat.phone.R
 import com.fullskat.phone.chat.Turn
 import com.fullskat.phone.ui.ConfirmDialog
 import com.fullskat.phone.ui.ErrorCard
+import com.fullskat.phone.ui.ModelMenu
 import com.fullskat.phone.ui.RenameDialog
 import com.fullskat.phone.ui.modelDisplayName
 import kotlinx.coroutines.launch
@@ -82,7 +83,7 @@ import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -> Unit, onModel: () -> Unit) {
+fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -> Unit) {
     val context = LocalContext.current
     val resources = LocalResources.current
     val messages by vm.messages.collectAsStateWithLifecycle()
@@ -183,14 +184,7 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
                             overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        session?.activeModel?.let { model ->
-                            Text(
-                                modelDisplayName(model),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Ember.accent,
-                                modifier = Modifier.clickable(onClickLabel = stringResource(R.string.settings_model), onClick = onModel),
-                            )
-                        }
+                        session?.let { ModelMenu(it, onPick = vm::setModel) }
                     }
                 },
                 actions = {

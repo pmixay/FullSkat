@@ -58,17 +58,16 @@ import com.fullskat.core.ui.theme.Ember
 import com.fullskat.phone.BuildConfig
 import com.fullskat.phone.R
 import com.fullskat.phone.ui.ALL_EFFORTS
+import com.fullskat.phone.ui.ModelMenu
 import com.fullskat.phone.ui.ConfirmDialog
 import com.fullskat.phone.ui.RenameDialog
 import com.fullskat.phone.ui.SectionHeader
-import com.fullskat.phone.ui.modelDisplayName
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     vm: SettingsViewModel,
     onBack: () -> Unit,
-    onModel: () -> Unit,
     onLinkWatch: () -> Unit,
     onDevices: () -> Unit,
 ) {
@@ -89,10 +88,11 @@ fun SettingsScreen(
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item { SectionHeader(stringResource(R.string.settings_assistant)) }
             item {
-                NavRow(
-                    title = stringResource(R.string.settings_model),
-                    value = s.activeModel?.let(::modelDisplayName) ?: stringResource(R.string.effort_default),
-                    onClick = onModel,
+                // The model name drops down the list right here (no separate screen).
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_model)) },
+                    supportingContent = { ModelMenu(s, onPick = vm::setModel, style = MaterialTheme.typography.bodyMedium) },
+                    colors = listColors(),
                 )
             }
             item {

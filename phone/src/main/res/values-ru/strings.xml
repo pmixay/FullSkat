@@ -113,7 +113,6 @@
     <!-- Settings -->
     <string name="settings_assistant">Ассистент</string>
     <string name="settings_model">Модель</string>
-    <string name="settings_model_note">Модель, глубина размышлений, поиск в интернете и рисунки общие с часами. Кольца показывают остаток бюджета провайдера.</string>
     <string name="settings_effort">Глубина размышлений</string>
     <string name="settings_web_search">Поиск в интернете</string>
     <string name="settings_web_search_desc">Новости, погода, цены и другие свежие факты</string>

@@ -38,7 +38,6 @@ import com.fullskat.phone.ui.settings.DevicesScreen
 import com.fullskat.phone.ui.settings.DevicesViewModel
 import com.fullskat.phone.ui.settings.LinkViewModel
 import com.fullskat.phone.ui.settings.LinkWatchScreen
-import com.fullskat.phone.ui.settings.ModelScreen
 import com.fullskat.phone.ui.settings.SettingsScreen
 import com.fullskat.phone.ui.settings.SettingsViewModel
 import com.fullskat.phone.ui.theme.PhoneTheme
@@ -49,7 +48,6 @@ private object Routes {
     const val DIALOGS = "dialogs"
     const val CHAT = "chat/{id}"
     const val SETTINGS = "settings"
-    const val MODEL = "settings/model"
     const val LINK = "settings/link"
     const val DEVICES = "settings/devices"
     const val FIGURE = "figure"
@@ -111,19 +109,16 @@ fun PhoneRoot(app: PhoneContainer) {
                         viewModel { ChatViewModel(app, id) },
                         onBack = { nav.popBackStack() },
                         onImage = { nav.navigate(Routes.image(it)) },
-                        onModel = { nav.navigate(Routes.MODEL) },
                     )
                 }
                 composable(Routes.SETTINGS) {
                     SettingsScreen(
                         viewModel { SettingsViewModel(app) },
                         onBack = { nav.popBackStack() },
-                        onModel = { nav.navigate(Routes.MODEL) },
                         onLinkWatch = { nav.navigate(Routes.LINK) },
                         onDevices = { nav.navigate(Routes.DEVICES) },
                     )
                 }
-                composable(Routes.MODEL) { ModelScreen(viewModel { SettingsViewModel(app) }, onBack = { nav.popBackStack() }) }
                 composable(Routes.LINK) { LinkWatchScreen(viewModel { LinkViewModel(app) }, onBack = { nav.popBackStack() }) }
                 composable(Routes.DEVICES) {
                     DevicesScreen(
