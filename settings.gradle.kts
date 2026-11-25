@@ -39,6 +39,21 @@ dependencyResolutionManagement {
             filter { includeGroupByRegex("com\\.github\\.MuntashirAkon(\\..+)?") }
         }
     }
+    components {
+        // BouncyCastle's modules ask for each other by version range (bcpkix 1.81 wants bcutil [1.81,1.82), bcutil
+        // wants bcprov the same way). A range makes Gradle list versions in every repository, Maven Central included,
+        // which rate-limits shared CI runners (HTTP 429). Pinned to the asking module's own version instead.
+        for (module in listOf("bcpkix-jdk15to18", "bcutil-jdk15to18")) {
+            withModule("org.bouncycastle:$module") {
+                val own = id.version
+                allVariants {
+                    withDependencies {
+                        filter { it.group == "org.bouncycastle" }.forEach { dep -> dep.version { require(own) } }
+                    }
+                }
+            }
+        }
+    }
 }
 rootProject.name = "FullSkat"
 include(":app")
