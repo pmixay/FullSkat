@@ -8,7 +8,13 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.fullskat.watch.ui.chat.AutoListen
+import com.fullskat.watch.ui.chat.StopListeningWhenLeaving
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -63,6 +69,51 @@ class AutoListenTest {
         }
         compose.waitForIdle()
         assertEquals(0, starts)
+    }
+
+    @Test fun leavingTheChatWhileListeningStopsTheMicrophone() {
+        var stops = 0
+        var screen by mutableStateOf("chat")
+        var listening by mutableStateOf(true)
+        compose.setContent {
+            val holder = rememberSaveableStateHolder()
+            holder.SaveableStateProvider(screen) {
+                if (screen == "chat") StopListeningWhenLeaving(listening) { stops++ } else BasicText("dialogs")
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(0, stops)
+        screen = "dialogs" // back button while the listening overlay is up
+        compose.waitForIdle()
+        assertEquals(1, stops)
+        screen = "chat"
+        listening = false
+        compose.waitForIdle()
+        screen = "dialogs" // leaving while answering or idle stops nothing
+        compose.waitForIdle()
+        assertEquals(1, stops)
+    }
+
+    @Test fun theAppGoingToTheBackgroundWhileListeningStopsTheMicrophone() {
+        var stops = 0
+        var listening by mutableStateOf(true)
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+            override val lifecycle: Lifecycle get() = registry
+        }
+        compose.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) { StopListeningWhenLeaving(listening) { stops++ } }
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE); owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP) }
+        assertEquals(1, stops) // screen off, another app
+        compose.runOnIdle {
+            owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+            listening = false
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { owner.registry.handleLifecycleEvent(Lifecycle.Event.ON_STOP) }
+        assertEquals(1, stops) // not listening: nothing to stop
     }
 
     @Test fun onlyFreshLaunchIntentsStartADialog() {

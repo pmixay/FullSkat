@@ -54,6 +54,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun finishListening() = turn.finishListening()
+
+    /** The user left the chat or the app while the microphone was open: stop listening, send nothing. */
+    fun stopListening() = turn.cancelListening()
     fun cancelTurn() = turn.cancel()
     fun dismissError() = turn.dismissError()
 

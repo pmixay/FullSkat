@@ -102,6 +102,17 @@ class AssistantTurn(
         _state.value = TurnState.Idle
     }
 
+    /**
+     * Closes the microphone if this turn is still listening (or loading the speech model / finishing the transcript),
+     * so nothing is recorded or sent; an answer that is already on its way is left alone. True if it stopped one.
+     */
+    fun cancelListening(): Boolean {
+        val s = _state.value
+        if (s !is TurnState.Listening && s !is TurnState.Transcribing) return false
+        cancel()
+        return true
+    }
+
     fun dismissError() {
         if (_state.value is TurnState.Failed) _state.value = TurnState.Idle
     }

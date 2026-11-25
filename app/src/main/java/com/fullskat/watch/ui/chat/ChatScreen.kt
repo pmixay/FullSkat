@@ -35,6 +35,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -107,6 +111,7 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
     }
 
     AutoListen(dialogId, autoListen, busy = turn.busy, start = startListening)
+    StopListeningWhenLeaving(listening = turn is TurnState.Listening || turn is TurnState.Transcribing, stop = { vm.stopListening() })
     // Errors clear themselves after a few seconds.
     LaunchedEffect(turn) {
         val failure = turn as? TurnState.Failed
@@ -243,6 +248,25 @@ internal fun AutoListen(dialogId: String, autoListen: Boolean, busy: Boolean, st
         if (autoListen && !done) {
             done = true
             if (!busy) start()
+        }
+    }
+}
+
+/**
+ * The microphone belongs to this screen: leaving the chat (back button, swipe) or the app going to the background
+ * (screen off, another app) while it is listening stops listening instead of recording on unseen.
+ */
+@Composable
+internal fun StopListeningWhenLeaving(listening: Boolean, stop: () -> Unit) {
+    val isListening by rememberUpdatedState(listening)
+    val stopNow by rememberUpdatedState(stop)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP && isListening) stopNow() }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (isListening) stopNow()
         }
     }
 }
