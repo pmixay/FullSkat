@@ -37,7 +37,6 @@ import androidx.wear.compose.material3.Text
 import com.fullskat.watch.BuildConfig
 import com.fullskat.watch.R
 import com.fullskat.watch.assistant.FullSkatVoiceInteractionService
-import com.fullskat.core.ServerEndpoint
 import com.fullskat.watch.data.prefs.Settings
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.UsageRing
@@ -113,14 +112,6 @@ fun SettingsScreen(vm: AppViewModel, onModel: () -> Unit, onEffort: () -> Unit, 
                     icon = { Icon(painterResource(R.drawable.ic_mic), contentDescription = null) },
                     label = { Text(stringResource(R.string.settings_assistant)) },
                     secondaryLabel = { Text(if (isAssistant) "✓" else stringResource(R.string.settings_assistant_desc), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                )
-            }
-            item {
-                FilledTonalButton(
-                    onClick = {},
-                    modifier = itemModifier,
-                    label = { Text(stringResource(R.string.settings_account)) },
-                    secondaryLabel = { Text(listOfNotNull(cfg.userName, cfg.serverName ?: ServerEndpoint.URL.removePrefix("https://")).joinToString(" · "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
                 )
             }
             item {

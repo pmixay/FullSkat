@@ -22,7 +22,6 @@
 
     <!-- Onboarding -->
     <string name="onboarding_intro">Общайтесь с ИИ-моделями текстом, голосом и фото. Диалоги доступны и на часах.</string>
-    <string name="onboarding_name">Ваше имя</string>
     <string name="onboarding_passcode">Код сервера</string>
     <string name="onboarding_passcode_hint">От 4 до 8 цифр</string>
     <string name="onboarding_sign_up">Зарегистрироваться</string>
@@ -112,9 +111,6 @@
     <string name="duration_h">%1$d ч</string>
 
     <!-- Settings -->
-    <string name="settings_account">Аккаунт</string>
-    <string name="settings_name_hint">Ваше имя · нажмите, чтобы изменить</string>
-    <string name="settings_your_name">Ваше имя</string>
     <string name="settings_assistant">Ассистент</string>
     <string name="settings_model">Модель</string>
     <string name="settings_model_note">Модель, глубина размышлений, поиск в интернете и рисунки общие с часами. Кольца показывают остаток бюджета провайдера.</string>

@@ -266,7 +266,6 @@ val area = PI * r * r // 28.27
 
     @Test fun onboarding_error() {
         val vm = OnboardingViewModel(app)
-        vm.onName("Миша")
         vm.onPasscode("4821")
         vm.showError(SignUpError.WrongPasscode)
         shot("02_onboarding_wrong") { OnboardingScreen(vm) {} }

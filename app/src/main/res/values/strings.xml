@@ -77,7 +77,6 @@
     <string name="link_hint">On the phone: FullSkat → Link a watch, enter this code</string>
     <string name="link_offline">No connection. Trying again…</string>
     <string name="link_done">Linked</string>
-    <string name="settings_account">Account</string>
     <string name="settings_unlink">Unlink this watch</string>
     <string name="settings_unlink_q">Unlink this watch? Dialogs stay on your phone and the server.</string>
     <string name="not_sent">Not sent</string>

@@ -20,7 +20,7 @@ own account.
 
 ## How it fits together
 
-1. On the phone, sign up with your name and the server passcode (the first person on a fresh server sets it).
+1. On the phone, sign up with the server passcode (the first person on a fresh server sets it). There is no name or profile: the app makes a random account id at install and never shows it.
 2. Open the watch app: it shows a 6-character code (letters and digits) that changes every 30 seconds, with a
    countdown ring around the bezel. On the phone: Settings → Link a watch, type the code. Done: the watch is
    part of your account.
@@ -33,7 +33,7 @@ own account.
 
 | Feature | How |
 | --- | --- |
-| Account | Sign up with your name and the server passcode. Settings shows your name (tap to change), the devices on your account with their last activity (unlink any of them), and Sign out. Being unlinked from another device returns the app to sign-up. |
+| Account | Sign up with the server passcode; no name or profile (a hidden random id made at install names the account on the server). Settings lists the devices on your account with their last activity (unlink any of them) and has Sign out. Being unlinked from another device returns the app to sign-up. |
 | Link a watch | Settings → Link a watch: six boxes for the code the watch shows (only the code alphabet is accepted, auto-advance, paste); wrong or expired codes and too many attempts are explained. |
 | Dialogs | The account's dialogs, newest first, with a one-line preview (formulas as Unicode, drawings and code as `[drawing]`/`[code]`); new dialog button, pull to refresh, swipe to delete, long press to rename or delete. Live updates while the app is open. |
 | Chat | Your questions on the right with their photos; answers rendered like on the watch (Markdown, LaTeX, highlighted code, animated figures), with the collapsible reasoning summary and web sources (tap opens the browser, long press copies). A question that did not reach the server says so and can be resent; failed answers show the reason; usage limits show when to try again. Answers keep running if you leave the chat; Stop ends them. |

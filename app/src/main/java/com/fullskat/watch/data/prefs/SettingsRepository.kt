@@ -18,7 +18,6 @@ private val Context.watchSettings by preferencesDataStore(name = "watch_settings
  */
 data class Settings(
     val paired: Boolean,
-    val userName: String?,
     val serverName: String?,
     /** The user's chosen model; null = the server's default ([serverModel]). */
     val model: String?,
@@ -41,7 +40,6 @@ class SettingsRepository(private val context: Context, private val session: Sess
     val settings: Flow<Settings> = combine(session.state, context.watchSettings.data) { s, p ->
         Settings(
             paired = s.signedIn,
-            userName = s.user?.name,
             serverName = s.serverName,
             model = s.prefs.model?.takeIf { s.info.models.isEmpty() || it in s.info.models },
             serverModel = s.info.model,

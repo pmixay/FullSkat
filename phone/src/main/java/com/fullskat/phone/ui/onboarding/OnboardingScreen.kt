@@ -39,7 +39,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -64,8 +63,6 @@ sealed interface SignUpError {
 }
 
 class OnboardingViewModel(private val app: PhoneContainer) : ViewModel() {
-    var name by mutableStateOf("")
-        private set
     var passcode by mutableStateOf("")
         private set
     var busy by mutableStateOf(false)
@@ -73,12 +70,7 @@ class OnboardingViewModel(private val app: PhoneContainer) : ViewModel() {
     var error by mutableStateOf<SignUpError?>(null)
         private set
 
-    val canSubmit: Boolean get() = !busy && name.trim().length in 1..MAX_NAME && passcode.length in 4..8
-
-    fun onName(value: String) {
-        name = value.take(MAX_NAME)
-        error = null
-    }
+    val canSubmit: Boolean get() = !busy && passcode.length in 4..8
 
     fun onPasscode(value: String) {
         passcode = value.filter { it.isDigit() }.take(8)
@@ -92,7 +84,7 @@ class OnboardingViewModel(private val app: PhoneContainer) : ViewModel() {
         error = null
         viewModelScope.launch {
             try {
-                val session = app.core.account.register(passcode, name.trim(), app.deviceName)
+                val session = app.core.account.register(passcode, app.deviceName)
                 app.onSignedIn()
                 onDone(session.firstSetup)
             } catch (e: CancellationException) {
@@ -115,10 +107,6 @@ class OnboardingViewModel(private val app: PhoneContainer) : ViewModel() {
 
     internal fun showError(e: SignUpError?) {
         error = e
-    }
-
-    companion object {
-        const val MAX_NAME = 40
     }
 }
 
@@ -154,16 +142,6 @@ fun OnboardingScreen(vm: OnboardingViewModel, onDone: (firstSetup: Boolean) -> U
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(32.dp))
-            OutlinedTextField(
-                value = vm.name,
-                onValueChange = vm::onName,
-                label = { Text(stringResource(R.string.onboarding_name)) },
-                singleLine = true,
-                enabled = !vm.busy,
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = vm.passcode,
                 onValueChange = vm::onPasscode,

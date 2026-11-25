@@ -62,6 +62,7 @@ class SessionStore(private val context: Context, private val kind: String = Devi
     private object Keys {
         val TOKEN = stringPreferencesKey("token_enc")
         val DEVICE_ID = stringPreferencesKey("device_id")
+        val INSTALL_USER_ID = stringPreferencesKey("install_user_id")
         val SERVER_NAME = stringPreferencesKey("server_name")
         val USER = stringPreferencesKey("user")
         val DEVICE = stringPreferencesKey("device")
@@ -91,6 +92,18 @@ class SessionStore(private val context: Context, private val kind: String = Devi
         if (!existing.isNullOrBlank()) return existing
         val id = UUID.randomUUID().toString()
         context.sessionStore.edit { it[Keys.DEVICE_ID] = id }
+        return id
+    }
+
+    /**
+     * A random id made once per install and never shown: it is the account's name on the server (the apps ask for
+     * no name). Kept across sign-outs, so signing up again from this install looks the same to the server.
+     */
+    suspend fun installUserId(): String {
+        val existing = context.sessionStore.data.first()[Keys.INSTALL_USER_ID]
+        if (!existing.isNullOrBlank()) return existing
+        val id = "u-" + UUID.randomUUID().toString().replace("-", "")
+        context.sessionStore.edit { it[Keys.INSTALL_USER_ID] = id }
         return id
     }
 

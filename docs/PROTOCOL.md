@@ -38,13 +38,14 @@ A **user** is a person; each has their own dialogs, images and preferences. A **
 `POST /v1/register` (no auth)
 
 ```json
-{"passcode": "1234", "name": "Миша", "device_id": "uuid", "device_name": "Pixel 9", "device_kind": "phone"}
+{"passcode": "1234", "name": "u-3f9c2a7e5b1d4c6f8a0e2b4d6f8a1c3e", "device_id": "uuid", "device_name": "Pixel 9", "device_kind": "phone"}
 ```
 
 * The passcode (4–8 digits, else `400 invalid_passcode_format`) is the server's invitation: whoever knows it
   may create an account. The very first registration on a fresh server **sets** it (`201`,
   `first_setup: true`); later ones must match it (`401 invalid_passcode` otherwise).
-* Creates a new user named `name` (1–40 characters after collapsing whitespace) with this device, and returns
+* Creates a new user named `name` (1–40 characters after collapsing whitespace; the apps send a random id made
+  once per install, `u-` + 32 hex digits, and never show it: there is no name or profile in the UI) with this device, and returns
   `201` (`200` when the `device_id` was already registered: the same device and user, a fresh token, the old
   token stops working; the user is not renamed, the device's name and kind are updated; reinstalling keeps
   the account only if the install kept its device id).
@@ -55,7 +56,7 @@ A **user** is a person; each has their own dialogs, images and preferences. A **
 * Per-IP limits: 5 attempts per minute (malformed requests count); 10 consecutive wrong passcodes lock the IP
   for 15 minutes (`429 locked`).
 
-`User` = `{"id": "u_...", "name": "Миша", "created_at": ms}`;
+`User` = `{"id": "u_...", "name": "u-3f9c…", "created_at": ms}`;
 `Device` = `{"id": "<device_id>", "kind": "phone", "name": "Pixel 9", "created_at": ms, "last_seen": ms, "current": true}`.
 
 ### Linking a device with a code (watch)

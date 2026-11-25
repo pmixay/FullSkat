@@ -28,9 +28,9 @@ class AccountRepository(
     private val session: SessionStore,
     private val sync: SyncEngine,
 ) {
-    /** Creates an account (phone). Throws WrongPasscode, Locked, Network... */
-    suspend fun register(passcode: String, name: String, deviceName: String): Session {
-        val s = api.register(passcode, name, session.deviceId(), deviceName, session.deviceKind)
+    /** Creates an account (phone) named with this install's hidden random id. Throws WrongPasscode, Locked, Network... */
+    suspend fun register(passcode: String, deviceName: String): Session {
+        val s = api.register(passcode, session.installUserId(), session.deviceId(), deviceName, session.deviceKind)
         session.save(s)
         sync.sync()
         return s
@@ -97,11 +97,6 @@ class AccountRepository(
     suspend fun unlink(deviceId: String) {
         val token = session.token() ?: return
         api.unlink(token, deviceId)
-    }
-
-    suspend fun rename(name: String) {
-        val token = session.token() ?: return
-        session.saveUser(api.rename(token, name))
     }
 
     /** Unlinks this device on the server (best effort) and forgets the account here. */

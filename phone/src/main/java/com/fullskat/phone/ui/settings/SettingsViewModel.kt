@@ -23,8 +23,6 @@ class SettingsViewModel(private val app: PhoneContainer) : ViewModel() {
     private val core = app.core
     val session: StateFlow<SessionState?> = core.session.state.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    var renameFailed by mutableStateOf(false)
-        private set
 
     /** Asks the server again for models, providers and usage (the rings go stale). */
     fun refresh() = viewModelScope.launch { core.account.refresh() }
@@ -44,20 +42,7 @@ class SettingsViewModel(private val app: PhoneContainer) : ViewModel() {
 
     fun setFigures(on: Boolean) = viewModelScope.launch { core.sync.putPrefs(Prefs(figures = on)) }
 
-    fun rename(name: String) = viewModelScope.launch {
-        renameFailed = try {
-            core.account.rename(name.trim())
-            false
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ApiException) {
-            true
-        }
-    }
 
-    fun dismissRenameError() {
-        renameFailed = false
-    }
 
     /** Unlinks this phone on the server and forgets the account here; the app returns to onboarding. */
     fun signOut() = viewModelScope.launch { core.account.signOut() }

@@ -73,7 +73,6 @@ fun SettingsScreen(
     onDevices: () -> Unit,
 ) {
     val session by vm.session.collectAsStateWithLifecycle()
-    var renaming by remember { mutableStateOf(false) }
     var choosingEffort by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.refresh() }
@@ -88,18 +87,6 @@ fun SettingsScreen(
     ) { padding ->
         val s = session ?: return@Scaffold
         LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-            item { SectionHeader(stringResource(R.string.settings_account)) }
-            item {
-                val name = s.user?.name.orEmpty()
-                ListItem(
-                    leadingContent = { Avatar(name) },
-                    headlineContent = { Text(name.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium) },
-                    supportingContent = { Text(stringResource(R.string.settings_name_hint)) },
-                    colors = listColors(),
-                    modifier = Modifier.clickable { renaming = true },
-                )
-            }
-
             item { SectionHeader(stringResource(R.string.settings_assistant)) }
             item {
                 NavRow(
@@ -189,25 +176,6 @@ fun SettingsScreen(
     }
 
     val s = session
-    if (renaming && s != null) {
-        RenameDialog(
-            title = stringResource(R.string.settings_your_name),
-            initial = s.user?.name.orEmpty(),
-            maxLength = 40,
-            onDismiss = { renaming = false },
-            onConfirm = {
-                vm.rename(it)
-                renaming = false
-            },
-        )
-    }
-    if (vm.renameFailed) {
-        AlertDialog(
-            onDismissRequest = vm::dismissRenameError,
-            text = { Text(stringResource(R.string.err_rename)) },
-            confirmButton = { TextButton(onClick = vm::dismissRenameError) { Text(stringResource(R.string.ok)) } },
-        )
-    }
     if (choosingEffort && s != null) {
         EffortDialog(s, onDismiss = { choosingEffort = false }, onPick = {
             vm.setEffort(it)
@@ -230,18 +198,6 @@ fun SettingsScreen(
 
 @Composable
 internal fun listColors() = ListItemDefaults.colors(containerColor = Color.Transparent)
-
-@Composable
-private fun Avatar(name: String) {
-    Box(Modifier.size(40.dp).background(Ember.userBubble, CircleShape), contentAlignment = Alignment.Center) {
-        Text(
-            name.trim().firstOrNull()?.uppercase() ?: "?",
-            color = Ember.onUserBubble,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
 
 @Composable
 internal fun RowIcon(painter: androidx.compose.ui.graphics.painter.Painter? = null, vector: ImageVector? = null, tint: Color = Ember.accent) {

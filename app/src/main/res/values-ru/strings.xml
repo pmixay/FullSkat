@@ -76,7 +76,6 @@
     <string name="link_hint">На телефоне: FullSkat → Привязать часы, введите этот код</string>
     <string name="link_offline">Нет связи. Пробую снова…</string>
     <string name="link_done">Привязано</string>
-    <string name="settings_account">Аккаунт</string>
     <string name="settings_unlink">Отвязать часы</string>
     <string name="settings_unlink_q">Отвязать эти часы? Диалоги останутся на телефоне и сервере.</string>
     <string name="not_sent">Не отправлено</string>

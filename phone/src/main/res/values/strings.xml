@@ -24,7 +24,6 @@
 
     <!-- Onboarding -->
     <string name="onboarding_intro">Chat with AI models by text, voice and photos. Your dialogs follow you to your watch.</string>
-    <string name="onboarding_name">Your name</string>
     <string name="onboarding_passcode">Server passcode</string>
     <string name="onboarding_passcode_hint">4 to 8 digits</string>
     <string name="onboarding_sign_up">Sign up</string>
@@ -114,9 +113,6 @@
     <string name="duration_h">%1$d h</string>
 
     <!-- Settings -->
-    <string name="settings_account">Account</string>
-    <string name="settings_name_hint">Your name · tap to change</string>
-    <string name="settings_your_name">Your name</string>
     <string name="settings_assistant">Assistant</string>
     <string name="settings_model">Model</string>
     <string name="settings_model_note">The model, effort, web search and drawings are shared with your watch. The rings show each provider\'s budget left.</string>
