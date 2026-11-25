@@ -98,8 +98,8 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "ru")
-        // The ONNX model is memory-mapped/read as is; compressing it only slows loading down.
-        noCompress += "onnx"
+        // The ONNX model is stored compressed (25 MB -> ~20 MB): the app copies it out of the APK once per installed
+        // build into internal storage and loads it from there (LocalSpeech), so it is inflated only on that first start.
     }
 
     testOptions {
@@ -125,6 +125,10 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
+        // The recognizer's native library (onnxruntime linked in) is 23 MB for arm64 and 16 MB for armv7. Stored
+        // compressed it takes ~16 MB for both; the installer unpacks only the watch's own ABI. This keeps the APK small
+        // to copy and to carry inside the phone app, at no extra storage on the watch.
+        jniLibs.useLegacyPackaging = true
     }
 }
 
