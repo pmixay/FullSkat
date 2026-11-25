@@ -388,7 +388,7 @@ val area = PI * r * r // 28.27
     @Test fun settings() {
         seedSession()
         val vm = SettingsViewModel(app)
-        shot("16_settings") { SettingsScreen(vm, {}, {}, {}) }
+        shot("16_settings") { SettingsScreen(vm, {}, {}, {}, {}) }
     }
 
     @Test fun model_menu_chat() {
@@ -403,7 +403,7 @@ val area = PI * r * r // 28.27
     @Test fun model_menu_settings() {
         seedSession()
         val vm = SettingsViewModel(app)
-        shot("18_model_menu_settings") { SettingsScreen(vm, {}, {}, {}) }
+        shot("18_model_menu_settings") { SettingsScreen(vm, {}, {}, {}, {}) }
         compose.onNodeWithText("Sonnet 5.5").performClick()
         settle()
         captureScreen("18_model_menu_settings")
@@ -435,7 +435,7 @@ val area = PI * r * r // 28.27
     @Test fun effort_dialog() {
         seedSession()
         val vm = SettingsViewModel(app)
-        shot("23_effort_dialog") { SettingsScreen(vm, {}, {}, {}) }
+        shot("23_effort_dialog") { SettingsScreen(vm, {}, {}, {}, {}) }
         compose.onNodeWithText("Thinking effort").performClick()
         settle()
         captureScreen("23_effort_dialog")
@@ -472,7 +472,7 @@ val area = PI * r * r // 28.27
     @Test fun settings_ru() {
         seedSession()
         val vm = SettingsViewModel(app)
-        shot("27_settings_ru") { SettingsScreen(vm, {}, {}, {}) }
+        shot("27_settings_ru") { SettingsScreen(vm, {}, {}, {}, {}) }
     }
 
     @Config(qualifiers = "+ru")

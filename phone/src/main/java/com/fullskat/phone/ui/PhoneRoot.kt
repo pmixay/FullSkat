@@ -36,6 +36,8 @@ import com.fullskat.phone.ui.onboarding.OnboardingScreen
 import com.fullskat.phone.ui.onboarding.OnboardingViewModel
 import com.fullskat.phone.ui.settings.DevicesScreen
 import com.fullskat.phone.ui.settings.DevicesViewModel
+import com.fullskat.phone.ui.settings.InstallWatchScreen
+import com.fullskat.phone.ui.settings.InstallWatchViewModel
 import com.fullskat.phone.ui.settings.LinkViewModel
 import com.fullskat.phone.ui.settings.LinkWatchScreen
 import com.fullskat.phone.ui.settings.SettingsScreen
@@ -50,6 +52,7 @@ private object Routes {
     const val SETTINGS = "settings"
     const val LINK = "settings/link"
     const val DEVICES = "settings/devices"
+    const val INSTALL_WATCH = "settings/install-watch"
     const val FIGURE = "figure"
     const val IMAGE = "image/{id}?w={w}&h={h}"
 
@@ -117,6 +120,15 @@ fun PhoneRoot(app: PhoneContainer) {
                         onBack = { nav.popBackStack() },
                         onLinkWatch = { nav.navigate(Routes.LINK) },
                         onDevices = { nav.navigate(Routes.DEVICES) },
+                        onInstallWatch = { nav.navigate(Routes.INSTALL_WATCH) },
+                    )
+                }
+                composable(Routes.INSTALL_WATCH) {
+                    InstallWatchScreen(
+                        viewModel { InstallWatchViewModel(app) },
+                        onBack = { nav.popBackStack() },
+                        // Installed: link it next, in place of the installer.
+                        onLinkWatch = { nav.navigate(Routes.LINK) { popUpTo(Routes.INSTALL_WATCH) { inclusive = true } } },
                     )
                 }
                 composable(Routes.LINK) { LinkWatchScreen(viewModel { LinkViewModel(app) }, onBack = { nav.popBackStack() }) }

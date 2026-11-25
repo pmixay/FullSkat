@@ -32,6 +32,12 @@ dependencyResolutionManagement {
             }
             filter { includeGroup("com.k2fsa.sherpa") }
         }
+        // libadb-android and its SPAKE2 library (the phone installs the watch app over wireless debugging) are only on
+        // JitPack; nothing else is fetched from there.
+        exclusiveContent {
+            forRepository { maven("https://jitpack.io") }
+            filter { includeGroupByRegex("com\\.github\\.MuntashirAkon(\\..+)?") }
+        }
     }
 }
 rootProject.name = "FullSkat"

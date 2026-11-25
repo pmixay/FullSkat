@@ -70,6 +70,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onLinkWatch: () -> Unit,
     onDevices: () -> Unit,
+    onInstallWatch: () -> Unit,
 ) {
     val session by vm.session.collectAsStateWithLifecycle()
     var choosingEffort by remember { mutableStateOf(false) }
@@ -132,6 +133,16 @@ fun SettingsScreen(
             }
 
             item { SectionHeader(stringResource(R.string.settings_devices)) }
+            item {
+                ListItem(
+                    leadingContent = { RowIcon(painterResource(R.drawable.ic_install)) },
+                    headlineContent = { Text(stringResource(R.string.iw_title)) },
+                    supportingContent = { Text(stringResource(R.string.iw_row_desc)) },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Ember.label) },
+                    colors = listColors(),
+                    modifier = Modifier.clickable(onClick = onInstallWatch),
+                )
+            }
             item {
                 ListItem(
                     leadingContent = { RowIcon(painterResource(R.drawable.ic_watch)) },

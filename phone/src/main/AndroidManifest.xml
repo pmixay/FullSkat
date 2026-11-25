@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Android 17+: finding the watch on the Wi-Fi (mDNS) and installing the watch app over wireless debugging. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <queries>
         <!-- SpeechRecognizer needs to see the system recognition service (package visibility, API 30+). -->

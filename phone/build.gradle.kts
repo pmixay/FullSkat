@@ -1,8 +1,38 @@
 // The phone app: sign-up, chat by text, voice and images, models and settings, linking the watch. Everything
 // it shares with the watch (API client, synced dialogs, chat, renderer) lives in :core.
+import javax.inject.Inject
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+// The watch app travels inside the phone app: a release build carries the watch's release APK as the asset
+// watch/fullskat-watch.apk (stored uncompressed), which Settings -> Install the watch app puts on the watch over
+// wireless debugging. Debug builds (unit tests, screenshots) do not build the watch app; their installer says so.
+abstract class BundleWatchApk : DefaultTask() {
+    @get:InputDirectory @get:PathSensitive(PathSensitivity.RELATIVE) abstract val apkDir: DirectoryProperty
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+    @get:Inject abstract val fileSystem: FileSystemOperations
+
+    @TaskAction
+    fun bundle() {
+        val apks = apkDir.get().asFile.listFiles { f -> f.extension == "apk" }.orEmpty()
+        check(apks.size == 1) { "Expected one watch APK in ${apkDir.get().asFile}, found ${apks.map { it.name }}" }
+        fileSystem.sync {
+            from(apks[0]) {
+                into("watch")
+                rename { "fullskat-watch.apk" }
+            }
+            into(outputDir)
+        }
+    }
+}
+
+// Wired by task path and output folder only (no access to the :app project object), so the configuration cache holds.
+val bundleWatchApk = tasks.register<BundleWatchApk>("bundleWatchApk") {
+    dependsOn(":app:assembleRelease")
+    apkDir.set(rootProject.layout.projectDirectory.dir("app/build/outputs/apk/release"))
 }
 
 // Release signing: uses a keystore from environment variables (CI secrets) when present,
@@ -19,6 +49,8 @@ android {
         targetSdk = 37
         versionCode = (System.getenv("FULLSKAT_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("FULLSKAT_VERSION_NAME") ?: "1.0.0"
+        // Conscrypt and SPAKE2 (the watch installer) ship x86 libraries too; phones are arm.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     signingConfigs {
@@ -57,6 +89,8 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "ru")
+        // The bundled watch APK is compressed inside already; stored as is, it is copied out without inflating.
+        noCompress += "apk"
     }
 
     testOptions {
@@ -82,6 +116,14 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
+        // Conscrypt's TLS library is stored compressed (a smaller APK); the installer unpacks only the phone's own ABI.
+        jniLibs.useLegacyPackaging = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleWatchApk, BundleWatchApk::outputDir)
     }
 }
 
@@ -107,6 +149,11 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.androidx.exifinterface)
     implementation(libs.kotlinx.coroutines.android)
+    // Installing the watch app over wireless debugging: the ADB client with pairing (libadb-android, used under
+    // Apache-2.0; it brings BouncyCastle and SPAKE2), Conscrypt for TLS 1.3, BouncyCastle PKIX for the client certificate.
+    implementation(libs.libadb.android)
+    implementation(libs.conscrypt.android)
+    implementation(libs.bouncycastle.pkix)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation(libs.junit)
