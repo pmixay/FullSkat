@@ -71,6 +71,7 @@ import com.fullskat.phone.ui.previewText
 import com.fullskat.phone.ui.relativeTime
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -78,7 +79,9 @@ class DialogsViewModel(private val app: PhoneContainer) : ViewModel() {
     private val core = app.core
     private val dao = core.db.dao()
 
-    val dialogs: StateFlow<List<DialogSummary>?> = dao.observeDialogs().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    /** Conversations only: a chat just created and still empty is not listed (nothing to open, rename or delete). */
+    val dialogs: StateFlow<List<DialogSummary>?> = dao.observeDialogs().map { all -> all.filter { it.messageCount > 0 } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     val status: StateFlow<SyncEngine.Status> = core.sync.status
 
     var refreshing by mutableStateOf(false)

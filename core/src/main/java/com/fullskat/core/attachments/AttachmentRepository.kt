@@ -34,8 +34,10 @@ class AttachmentRepository(
     /** Reads an image the user picked or shot and makes it upload-ready: upright, at most [maxSide] px, JPEG. */
     suspend fun prepare(uri: Uri, maxSide: Int = MAX_SIDE): ByteArray = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
+        // Measuring only: in this mode decodeStream always returns null; whether it is an image shows in the size.
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: throw IllegalArgumentException("unreadable image")
+        (resolver.openInputStream(uri) ?: throw IllegalArgumentException("unreadable image")).use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("not an image")
         var sample = 1
         while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
         val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }

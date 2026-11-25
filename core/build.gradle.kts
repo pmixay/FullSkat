@@ -31,6 +31,13 @@ android {
                 // ./gradlew :core:testDebugUnitTest -Pinterop=http://127.0.0.1:8765 runs ServerInteropTest against a
                 // real server (tools/interop/fake_server.py); without the property that test is skipped.
                 providers.gradleProperty("interop").orNull?.let { url -> it.systemProperty("fullskat.interop.url", url) }
+                // Robolectric's native graphics (real image decoding in AttachmentPrepareTest) reaches into JDK internals.
+                it.jvmArgs(
+                    "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                    "--add-opens=java.base/java.io=ALL-UNNAMED",
+                    "--add-opens=java.base/java.util=ALL-UNNAMED",
+                )
             }
         }
     }
@@ -63,4 +70,6 @@ dependencies {
     testImplementation("org.json:json:20260814") // the real org.json for JVM tests (android.jar only has stubs)
     testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.versions.coroutines.get()}")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.8.0-alpha01")
 }

@@ -194,7 +194,8 @@ fun ChatScreen(vm: ChatViewModel, onBack: () -> Unit, onImage: (AttachmentRef) -
                     }
                 },
                 actions = {
-                    Box {
+                    // A new chat has nothing to rename or delete yet: the menu comes with its first question.
+                    if (!messages.isNullOrEmpty()) Box {
                         IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more)) }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(
