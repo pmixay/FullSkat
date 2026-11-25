@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -52,8 +53,20 @@ import com.fullskat.phone.ui.figure.FigureViewer
 import com.fullskat.phone.ui.onboarding.OnboardingScreen
 import com.fullskat.phone.ui.onboarding.OnboardingViewModel
 import com.fullskat.phone.ui.onboarding.SignUpError
+import com.fullskat.phone.ui.settings.ConnectionStatus
 import com.fullskat.phone.ui.settings.DevicesContent
 import com.fullskat.phone.ui.settings.DevicesState
+import com.fullskat.phone.ui.settings.InstallStatus
+import com.fullskat.phone.ui.settings.InstallWatchContent
+import com.fullskat.phone.ui.settings.InstallerActions
+import com.fullskat.phone.ui.settings.InstallerState
+import com.fullskat.phone.ui.settings.PairStatus
+import com.fullskat.phone.watchinstall.AdbProblem
+import com.fullskat.phone.watchinstall.AppVersion
+import com.fullskat.phone.watchinstall.BundledApk
+import com.fullskat.phone.watchinstall.InstallError
+import com.fullskat.phone.watchinstall.WatchInfo
+import com.fullskat.phone.watchinstall.WatchService
 import com.fullskat.phone.ui.settings.LinkState
 import com.fullskat.phone.ui.settings.LinkWatchContent
 import com.fullskat.phone.ui.settings.SettingsScreen
@@ -487,4 +500,91 @@ val area = PI * r * r // 28.27
 
     @Config(qualifiers = "+ru")
     @Test fun link_watch_ru() = shot("29_link_watch_ru") { LinkWatchContent("K7Q2Z", LinkState.Locked(240), {}, {}, {}, {}) }
+
+    // ---------------------------------------------------------------- install the watch app
+
+    private val bundled = BundledApk.Ready(AppVersion("1.0.42", 42), minSdk = 33, file = File("fullskat-watch.apk"), size = 43_400_000)
+    private val pairService = WatchService("adb-R5CT1234567-AbCdEf", "192.168.1.23", 37145)
+    private val connectService = WatchService("adb-R5CT1234567-AbCdEf", "192.168.1.23", 41235)
+    private val watch = WatchInfo("SM-L305F", "samsung", "16", 36, listOf("arm64-v8a", "armeabi-v7a", "armeabi"), AppVersion("1.0.41", 41))
+    private val connected = InstallerState(
+        bundled = bundled,
+        connectAddress = connectService.address,
+        pair = PairStatus.Paired,
+        connection = ConnectionStatus.Connected(watch),
+    )
+
+    private fun installer(name: String, state: InstallerState, scrollTo: String? = null) {
+        shot(name) { InstallWatchContent(state, object : InstallerActions {}, {}, {}, {}) }
+        if (scrollTo != null) {
+            compose.onNodeWithText(scrollTo, substring = true).performScrollTo()
+            settle()
+            capture(name)
+        }
+    }
+
+    @Test fun install_instructions() = installer("30_install_instructions", InstallerState(bundled = bundled))
+
+    @Test fun install_pair() = installer(
+        "31_install_pair",
+        InstallerState(
+            bundled = bundled,
+            pairServices = listOf(pairService),
+            pairHost = pairService.host,
+            pairPort = pairService.port.toString(),
+            pairCode = "4829",
+            notPaired = true,
+        ),
+    )
+
+    @Test fun install_pair_wrong() = installer(
+        "32_install_pair_wrong",
+        InstallerState(
+            bundled = bundled,
+            pairServices = listOf(pairService),
+            connectServices = listOf(connectService),
+            pairHost = pairService.host,
+            pairPort = pairService.port.toString(),
+            connectAddress = connectService.address,
+            pair = PairStatus.Failed(AdbProblem.WRONG_CODE),
+        ),
+    )
+
+    @Test fun install_connected() = installer("33_install_connected", connected)
+
+    @Test fun install_progress() = installer("34_install_progress", connected.copy(install = InstallStatus.Uploading(18_200_000, bundled.size)))
+
+    @Test fun install_mismatch() = installer(
+        "35_install_mismatch",
+        connected.copy(
+            install = InstallStatus.Failed(
+                InstallError.UPDATE_INCOMPATIBLE,
+                "INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.fullskat.watch signatures do not match newer version; ignoring!",
+            ),
+        ),
+        scrollTo = "Cancel",
+    )
+
+    @Test fun install_done() = installer("36_install_done", connected.copy(install = InstallStatus.Done(AppVersion("1.0.42", 42), relink = true)))
+
+    @Test fun install_not_bundled() = installer(
+        "37_install_not_bundled",
+        InstallerState(bundled = BundledApk.NotBundled, connectServices = listOf(connectService), connectAddress = connectService.address),
+        scrollTo = "only bundled in release builds",
+    )
+
+    @Test fun install_permission() = installer("38_install_permission", InstallerState(bundled = bundled, needsPermission = true))
+
+    @Config(qualifiers = "+ru")
+    @Test fun install_pair_ru() = installer(
+        "39_install_pair_ru",
+        InstallerState(bundled = bundled, pairServices = listOf(pairService), pairHost = pairService.host, pairPort = pairService.port.toString(), pairCode = "482913", pair = PairStatus.Working),
+    )
+
+    @Config(qualifiers = "+ru")
+    @Test fun install_mismatch_ru() = installer(
+        "40_install_mismatch_ru",
+        connected.copy(install = InstallStatus.Failed(InstallError.UPDATE_INCOMPATIBLE, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")),
+        scrollTo = "Отмена",
+    )
 }

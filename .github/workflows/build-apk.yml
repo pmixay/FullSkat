@@ -103,6 +103,8 @@ jobs:
           FULLSKAT_KEY_PASSWORD: ${{ secrets.FULLSKAT_KEY_PASSWORD }}
           FULLSKAT_VERSION_CODE: ${{ github.run_number }}
           FULLSKAT_VERSION_NAME: ${{ github.ref_type == 'tag' && github.ref_name || format('1.0.{0}', github.run_number) }}
+        # The phone release carries the watch release APK (phone:bundleWatchApk depends on :app:assembleRelease), so
+        # Gradle builds the watch first; both are built once, with the same version and signing key.
         run: ./gradlew :app:assembleRelease :phone:assembleRelease --no-daemon --console=plain
 
       - name: Collect APKs
@@ -134,7 +136,7 @@ jobs:
 
       - name: Summary
         run: |
-          echo "Watch APK ${{ steps.apk.outputs.watch }} (artifact fullskat-watch-apk), phone APK ${{ steps.apk.outputs.phone }} (artifact fullskat-phone-apk). Each zip contains only its APK." >> "$GITHUB_STEP_SUMMARY"
+          echo "Watch APK ${{ steps.apk.outputs.watch }} (artifact fullskat-watch-apk), phone APK ${{ steps.apk.outputs.phone }} (artifact fullskat-phone-apk). Each zip contains only its APK. The phone APK contains the watch APK and installs it on the watch over wireless debugging (Settings → Install the watch app)." >> "$GITHUB_STEP_SUMMARY"
 
   server-tests:
     name: Server tests

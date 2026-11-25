@@ -121,6 +121,12 @@ android {
     }
 }
 
+// Robolectric brings the desktop Conscrypt for its own TLS; the Android one (same classes, Android-only native library)
+// would shadow it in JVM tests and fail to load.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
+}
+
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
         variant.sources.assets?.addGeneratedSourceDirectory(bundleWatchApk, BundleWatchApk::outputDir)

@@ -603,7 +603,7 @@ private fun WatchCard(info: WatchInfo, minSdk: Int) {
             Icon(painterResource(R.drawable.ic_watch), contentDescription = null, tint = Ember.accent, modifier = Modifier.size(24.dp))
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val name = listOf(info.manufacturer, info.model).filter { it.isNotBlank() }.distinct()
+            val name = listOf(info.manufacturer.replaceFirstChar { it.uppercase() }, info.model).filter { it.isNotBlank() }.distinct()
                 .let { parts -> if (parts.size == 2 && parts[1].startsWith(parts[0], ignoreCase = true)) listOf(parts[1]) else parts }
                 .joinToString(" ")
             Text(name.ifBlank { "—" }, style = MaterialTheme.typography.titleMedium)

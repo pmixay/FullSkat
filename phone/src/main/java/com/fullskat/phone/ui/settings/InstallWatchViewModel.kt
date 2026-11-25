@@ -395,9 +395,10 @@ class InstallWatchViewModel(app: PhoneContainer) : ViewModel(), InstallerActions
         work?.cancel()
         discovery.stop()
         // Closing joins libadb's reader thread and deleting the APK copy is disk work: not on the main thread.
+        val bundled = state.bundled
         thread(name = "adb-close", isDaemon = true) {
             adb.close()
-            BundledWatchApk.clear(context)
+            BundledWatchApk.delete(bundled)
         }
     }
 

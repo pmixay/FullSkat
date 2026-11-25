@@ -20,31 +20,35 @@ sealed interface BundledApk {
 
 object BundledWatchApk {
     const val ASSET = "watch/fullskat-watch.apk"
-
-    private fun copyFile(context: Context) = File(File(context.cacheDir, "watch"), "fullskat-watch.apk")
+    private const val STALE_MS = 15 * 60_000L
 
     /**
      * Copies the bundled APK into the cache (Android reads versions only from files, and the copy is what gets streamed
-     * to the watch) and reads its version. Blocking.
+     * to the watch) and reads its version. Each screen gets its own copy and deletes it when it closes ([delete]);
+     * copies left behind by a killed process are removed here. Blocking.
      */
     fun load(context: Context): BundledApk {
-        val file = copyFile(context)
+        val dir = File(context.cacheDir, "watch").apply { mkdirs() }
+        val now = System.currentTimeMillis()
+        dir.listFiles()?.filter { now - it.lastModified() > STALE_MS }?.forEach { it.delete() }
+        val file = File(dir, "fullskat-watch-$now.apk")
         try {
-            file.parentFile?.mkdirs()
-            val tmp = File(file.parentFile, "${file.name}.tmp")
-            context.assets.open(ASSET).use { input -> tmp.outputStream().use { input.copyTo(it, 256 * 1024) } }
-            if (!tmp.renameTo(file)) return BundledApk.Broken
+            context.assets.open(ASSET).use { input -> file.outputStream().use { input.copyTo(it, 256 * 1024) } }
         } catch (e: FileNotFoundException) {
+            file.delete()
             return BundledApk.NotBundled
         }
-        val info = context.packageManager.getPackageArchiveInfo(file.path, 0) ?: return BundledApk.Broken
-        if (info.packageName != WATCH_PACKAGE) return BundledApk.Broken
-        val minSdk = info.applicationInfo?.minSdkVersion ?: 0
-        return BundledApk.Ready(AppVersion(info.versionName.orEmpty(), PackageInfoCompat.getLongVersionCode(info)), minSdk, file, file.length())
+        val info = context.packageManager.getPackageArchiveInfo(file.path, 0)
+        if (info == null || info.packageName != WATCH_PACKAGE) {
+            file.delete()
+            return BundledApk.Broken
+        }
+        val version = AppVersion(info.versionName.orEmpty(), PackageInfoCompat.getLongVersionCode(info))
+        return BundledApk.Ready(version, info.applicationInfo?.minSdkVersion ?: 0, file, file.length())
     }
 
-    /** Drops the cached copy (tens of megabytes) once the installer screen is gone. */
-    fun clear(context: Context) {
-        copyFile(context).parentFile?.deleteRecursively()
+    /** Drops a screen's copy (tens of megabytes) once it is gone. */
+    fun delete(apk: BundledApk) {
+        (apk as? BundledApk.Ready)?.file?.delete()
     }
 }

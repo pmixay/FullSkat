@@ -8,7 +8,8 @@ the server you host, never directly between the devices. Several people can use 
 own account.
 
 * **Phone app** (`phone/`): Kotlin, Jetpack Compose Material 3. Sign-up, dialogs, chat with images from the
-  gallery or the camera, voice input, figures, model settings, linking a watch, devices.
+  gallery or the camera, voice input, figures, model settings, linking a watch, devices. Its release build carries
+  the watch app's APK and installs it on the watch over wireless debugging.
 * **Watch app** (`app/`): Kotlin, Jetpack Compose for Wear OS (Material 3). Target device: Galaxy Watch7
   (SM-L305F), Wear OS 6/7, `compileSdk 37`, `targetSdk 37`, `minSdk 33`.
 * **Shared core** (`core/`): the rich-text and figure renderer, the API client, the local copy of the account's
@@ -20,20 +21,22 @@ own account.
 
 ## How it fits together
 
-1. On the phone, sign up with the server passcode (the first person on a fresh server sets it). There is no name or profile: the app makes a random account id at install and never shows it.
-2. Open the watch app: it shows a 6-character code (letters and digits) that changes every 30 seconds, with a
+1. Install the phone app; it puts the watch app on the watch (Settings → Install the watch app, see below).
+2. On the phone, sign up with the server passcode (the first person on a fresh server sets it). There is no name or profile: the app makes a random account id at install and never shows it.
+3. Open the watch app: it shows a 6-character code (letters and digits) that changes every 30 seconds, with a
    countdown ring around the bezel. On the phone: Settings → Link a watch, type the code. Done: the watch is
    part of your account.
-3. Ask on either device. The server keeps the dialogs; the other device catches up when it opens and, while it
+4. Ask on either device. The server keeps the dialogs; the other device catches up when it opens and, while it
    is open, live (a question asked on the phone appears on the watch as it is being answered). Model, effort,
    web search and drawings are shared settings; vibration stays per device.
-4. Answers are generated on the server, so they finish even if the asking device loses its connection.
+5. Answers are generated on the server, so they finish even if the asking device loses its connection.
 
 ## What the phone app does
 
 | Feature | How |
 | --- | --- |
 | Account | Sign up with the server passcode; no name or profile (a hidden random id made at install names the account on the server). Settings lists the devices on your account with their last activity (unlink any of them) and has Sign out. Being unlinked from another device returns the app to sign-up. |
+| Install the watch app | Settings → Install the watch app puts the watch app bundled in the phone app on the watch over Wi-Fi, without a computer: the phone finds the watch's wireless debugging on the network (mDNS), pairs once with the 6-digit code from *Pair new device* (the watch remembers the phone's key, kept in no-backup app storage; next time it connects straight away), shows the watch's model, Wear OS/Android version, processor and the FullSkat installed on it, and streams the APK into the package manager with a progress bar. A watch app signed with another key (e.g. a CI build with the debug key) can be replaced after a warning that the watch then has to be linked again. Android 17 asks for the local network ("Nearby devices") permission. Debug builds do not carry the watch app. |
 | Link a watch | Settings → Link a watch: six boxes for the code the watch shows (only the code alphabet is accepted, auto-advance, paste); wrong or expired codes and too many attempts are explained. |
 | Dialogs | The account's dialogs, newest first, with a one-line preview (formulas as Unicode, drawings and code as `[drawing]`/`[code]`); new dialog button, pull to refresh, swipe to delete, long press to rename or delete. Live updates while the app is open. |
 | Chat | Your questions on the right with their photos; answers rendered like on the watch (Markdown, LaTeX, highlighted code, animated figures), with the collapsible reasoning summary and web sources (tap opens the browser, long press copies). A question that did not reach the server says so and can be resent; failed answers show the reason; usage limits show when to try again. Answers keep running if you leave the chat; Stop ends them. |
@@ -79,17 +82,37 @@ Requirements: JDK 21, Android SDK with `platforms;android-37` and `build-tools;3
 ```sh
 ./gradlew :app:assembleRelease :phone:assembleRelease
 # app/build/outputs/apk/release/app-release.apk     (watch)
-# phone/build/outputs/apk/release/phone-release.apk (phone)
+# phone/build/outputs/apk/release/phone-release.apk (phone, with the watch APK inside)
 ```
+
+The phone release build depends on the watch release build: `phone:bundleWatchApk` copies the watch APK into the
+phone's assets as `watch/fullskat-watch.apk` (stored uncompressed). Debug phone builds (unit tests, screenshots) do
+not build the watch app. The phone app is built for `arm64-v8a` and `armeabi-v7a` only.
 
 Release signing reads `FULLSKAT_KEYSTORE_FILE`, `FULLSKAT_KEYSTORE_PASSWORD`,
 `FULLSKAT_KEY_ALIAS`, `FULLSKAT_KEY_PASSWORD` from the environment and falls back to the
 debug key when they are not set, so every build is installable.
 
-Install on the watch over Wi-Fi debugging:
+### Installing on the watch
+
+From the phone app: Settings → Install the watch app. Prepare the watch once:
+
+1. Watch and phone on the same Wi-Fi.
+2. On the watch: Settings → System → About → Versions, tap *Software version* (or *Build number*) 7 times to unlock
+   Developer options; then Settings → Developer options → **Wireless debugging** on.
+3. Tap **Pair new device** and type the 6-digit code into the phone (the phone usually finds the address itself).
+   Pairing is needed once per watch; later the phone connects as soon as wireless debugging is on.
+4. Install or update. Afterwards turn Wireless debugging off again: it costs battery.
+
+The installer uses [libadb-android](https://github.com/MuntashirAkon/libadb-android) (Apache-2.0 option of its
+GPL-3.0-or-later / Apache-2.0 dual licence; its SPAKE2 pairing library is LGPL-3.0), Conscrypt (Apache-2.0) for
+TLS 1.3 and BouncyCastle (MIT-style) for the phone's ADB certificate.
+
+Fallback with a computer (wireless debugging, `adb` 30+):
 
 ```sh
-adb connect <watch-ip>:5555
+adb pair <watch-ip>:<pairing-port>      # the code and port from "Pair new device"
+adb connect <watch-ip>:<port>           # the port on the Wireless debugging screen
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
@@ -98,7 +121,8 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 `.github/workflows/build-apk.yml` builds both release APKs on every push to `main` and `claude/**` branches, on
 tags `v*` (push only: no pull-request or manual triggers). The uploaded artifacts `fullskat-watch-apk` and
 `fullskat-phone-apk` are single zips, compressed at level 9, containing only `fullskat-watch.apk` and
-`fullskat-phone.apk`. It also runs the unit tests of all three Android modules, a client-server interop test
+`fullskat-phone.apk`; the phone APK also contains the watch APK (same version and key), so installing the phone app
+is enough to put the watch app on the watch. It also runs the unit tests of all three Android modules, a client-server interop test
 (the Kotlin client against the real server with a scripted model, `tools/interop/`) and, on `claude/**`
 branches, renders the watch and phone screenshots (artifact `fullskat-screenshots`). To sign with
 your own key add the repository secrets `FULLSKAT_KEYSTORE_B64` (base64 of the `.jks`),
