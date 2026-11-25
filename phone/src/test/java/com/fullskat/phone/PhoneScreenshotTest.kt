@@ -6,14 +6,16 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Shader
 import android.net.Uri
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -514,13 +516,13 @@ val area = PI * r * r // 28.27
         connection = ConnectionStatus.Connected(watch),
     )
 
-    private fun installer(name: String, state: InstallerState, scrollTo: String? = null) {
-        shot(name) { InstallWatchContent(state, object : InstallerActions {}, {}, {}, {}) }
-        if (scrollTo != null) {
-            compose.onNodeWithText(scrollTo, substring = true).performScrollTo()
-            settle()
-            capture(name)
-        }
+    /**
+     * [toEnd]: shown scrolled to the bottom. (A scroll state that starts past the end settles on it; scrolling by test
+     * actions animates, and with the frozen clock that never finishes.)
+     */
+    private fun installer(name: String, state: InstallerState, toEnd: Boolean = false) = shot(name) {
+        val scroll = if (toEnd) remember { ScrollState(Int.MAX_VALUE) } else rememberScrollState()
+        InstallWatchContent(state, object : InstallerActions {}, {}, {}, {}, scroll)
     }
 
     @Test fun install_instructions() = installer("30_install_instructions", InstallerState(bundled = bundled))
@@ -562,7 +564,7 @@ val area = PI * r * r // 28.27
                 "INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.fullskat.watch signatures do not match newer version; ignoring!",
             ),
         ),
-        scrollTo = "Cancel",
+        toEnd = true,
     )
 
     @Test fun install_done() = installer("36_install_done", connected.copy(install = InstallStatus.Done(AppVersion("1.0.42", 42), relink = true)))
@@ -570,7 +572,7 @@ val area = PI * r * r // 28.27
     @Test fun install_not_bundled() = installer(
         "37_install_not_bundled",
         InstallerState(bundled = BundledApk.NotBundled, connectServices = listOf(connectService), connectAddress = connectService.address),
-        scrollTo = "only bundled in release builds",
+        toEnd = true,
     )
 
     @Test fun install_permission() = installer("38_install_permission", InstallerState(bundled = bundled, needsPermission = true))
@@ -585,6 +587,6 @@ val area = PI * r * r // 28.27
     @Test fun install_mismatch_ru() = installer(
         "40_install_mismatch_ru",
         connected.copy(install = InstallStatus.Failed(InstallError.UPDATE_INCOMPATIBLE, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")),
-        scrollTo = "Отмена",
+        toEnd = true,
     )
 }

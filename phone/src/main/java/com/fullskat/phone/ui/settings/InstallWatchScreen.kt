@@ -8,6 +8,7 @@ import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -128,6 +129,7 @@ fun InstallWatchContent(
     onAllowNetwork: () -> Unit,
     onBack: () -> Unit,
     onLinkWatch: () -> Unit,
+    scrollState: ScrollState = rememberScrollState(),
 ) {
     Scaffold(
         topBar = {
@@ -138,7 +140,7 @@ fun InstallWatchContent(
         },
     ) { padding ->
         Column(
-            Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.padding(padding).fillMaxSize().imePadding().verticalScroll(scrollState).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             val install = state.install
@@ -305,6 +307,7 @@ private fun ConnectStep(state: InstallerState, actions: InstallerActions) {
         OutlinedButton(
             onClick = actions::connect,
             enabled = state.connectAddress.isNotBlank() && !state.busy,
+            border = BorderStroke(1.dp, Ember.outline), // the default disabled outline vanishes on the dark card
             modifier = Modifier.fillMaxWidth().height(48.dp),
         ) { Text(stringResource(R.string.iw_connect_button)) }
     }

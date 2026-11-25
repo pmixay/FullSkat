@@ -56,8 +56,8 @@ class WatchAdb(private val keyDir: File, private val deviceName: String) {
      * (not paired). Replaces an earlier connection.
      */
     suspend fun connect(host: String, port: Int) {
-        disconnect()
         val conn = detached("adb-connect") { cancelled ->
+            disconnect() // closing joins libadb's reader thread: not on the caller's (main) thread
             ensureTls()
             // The library opens its socket without a timeout: find out quickly whether anything listens there at all.
             Socket().use { it.connect(InetSocketAddress(host, port), PROBE_TIMEOUT_MS) }
