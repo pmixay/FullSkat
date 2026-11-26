@@ -36,6 +36,7 @@ import com.fullskat.core.net.ModelEfforts
 import com.fullskat.core.net.ModelInfo
 import com.fullskat.core.net.Prefs
 import com.fullskat.core.net.ProviderInfo
+import com.fullskat.core.net.UsageWindow
 import com.fullskat.core.net.Roles
 import com.fullskat.core.net.Session
 import com.fullskat.core.net.User
@@ -178,7 +179,10 @@ val area = PI * r * r // 28.27
             providers = listOf(
                 ProviderInfo("anthropic", listOf("claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"), 0.62f, "$31.00"),
                 ProviderInfo("openrouter", listOf("moonshotai/kimi-k3"), 0.08f, "$0.40"),
-                ProviderInfo("openai", listOf("gpt-6.1-terra", "gpt-6-luna"), null, ""),
+                ProviderInfo(
+                    "openai", listOf("gpt-6.1-terra", "gpt-6-luna"), 0.2f, "20%",
+                    listOf(UsageWindow(18_000, 0.2f, now / 1000 + 2 * 3600 + 600), UsageWindow(604_800, 0.64f, now / 1000 + 3 * 86_400 + 4 * 3600)),
+                ),
             ),
         )
         app.core.session.save(
@@ -424,6 +428,17 @@ val area = PI * r * r // 28.27
         compose.onNodeWithText("Sonnet 5.5").performClick()
         settle()
         captureScreen("18_model_menu_settings")
+    }
+
+    @Test fun model_menu_limits() {
+        seedSession()
+        val vm = SettingsViewModel(app)
+        shot("18b_model_menu_limits") { SettingsScreen(vm, {}, {}, {}, {}) }
+        compose.onNodeWithText("Sonnet 5.5").performClick()
+        settle()
+        compose.onNodeWithText("20%").performClick() // the OpenAI ring unfolds its 5-hour and weekly quotas
+        settle()
+        captureScreen("18b_model_menu_limits")
     }
 
     @Test fun link_watch() = shot("19_link_watch") { LinkWatchContent("K7Q2", LinkState.Entering, {}, {}, {}, {}) }

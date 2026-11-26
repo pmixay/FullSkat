@@ -8,6 +8,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 
 import anthropic
@@ -240,20 +241,99 @@ PROBE_TIMEOUT = 8.0
 OPENROUTER_FALLBACK_EFFORTS = ("low", "medium", "high", "xhigh")
 
 
+def _clamp_share(share: float | None) -> float | None:
+    return None if share is None else round(min(max(share, 0.0), 1.0), 3)
+
+
+@dataclass(frozen=True)
+class UsageWindow:
+    """One rolling quota of a provider (e.g. 5 hours, a week): its length, the share left and when it resets."""
+
+    seconds: int
+    remaining: float | None
+    resets_at: int | None = None  # unix seconds
+
+    def to_json(self) -> dict[str, object]:
+        return {"seconds": self.seconds, "remaining": _clamp_share(self.remaining), "resets_at": self.resets_at}
+
+
 @dataclass(frozen=True)
 class UsageLeft:
-    """How much of a provider's budget is left: a 0..1 share for the watch's ring (None = unknown) and a label."""
+    """How much of a provider's budget is left: a 0..1 share for the watch's ring (None = unknown) and a label.
+
+    `windows` are the separate quotas behind it, shortest first, when the provider has several (a 5-hour and a
+    weekly one); `remaining` is then the tightest of them."""
 
     remaining: float | None
     label: str = ""
+    windows: tuple[UsageWindow, ...] = ()
+
+    @classmethod
+    def of_windows(cls, windows: list[UsageWindow]) -> UsageLeft | None:
+        """The summary of several quotas: the one with the least left decides the ring and the label."""
+        windows = sorted(windows, key=lambda w: w.seconds)
+        known = [w.remaining for w in windows if w.remaining is not None]
+        if not known:
+            return None
+        left = min(known)
+        return cls(left, f"{round(min(max(left, 0.0), 1.0) * 100)}%", tuple(windows))
 
     def to_json(self) -> dict[str, object]:
-        share = None if self.remaining is None else round(min(max(self.remaining, 0.0), 1.0), 3)
-        return {"remaining": share, "label": self.label}
+        return {
+            "remaining": _clamp_share(self.remaining),
+            "label": self.label,
+            "windows": [w.to_json() for w in self.windows],
+        }
 
 
 def _share(left: float, total: float) -> float | None:
     return left / total if total > 0 else None
+
+
+# Window names of the OpenAI gateway (Codex LB) in seconds.
+_WINDOW_SECONDS = {"5h": 5 * 3600, "daily": 86400, "day": 86400, "7d": 7 * 86400, "weekly": 7 * 86400,
+                   "week": 7 * 86400, "monthly": 30 * 86400, "month": 30 * 86400}
+_TIME_UNIT_SECONDS = {"SECOND": 1, "MINUTE": 60, "HOUR": 3600, "DAY": 86400, "WEEK": 7 * 86400}
+
+
+def _window_seconds(name: Any) -> int | None:
+    """"5h", "7d", "weekly", "90m" -> seconds; None when it is not a window length."""
+    if not isinstance(name, str):
+        return None
+    name = name.strip().lower()
+    if name in _WINDOW_SECONDS:
+        return _WINDOW_SECONDS[name]
+    match = re.fullmatch(r"(\d+)\s*([smhdw])", name)
+    if not match:
+        return None
+    return int(match[1]) * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 7 * 86400}[match[2]]
+
+
+def _kimi_reset(data: Any) -> int | None:
+    if not isinstance(data, dict):
+        return None
+    for key in ("resetTime", "reset_time", "resetAt", "reset_at"):
+        if data.get(key):
+            return _unix_time(data[key])
+    return None
+
+
+def _unix_time(value: Any) -> int | None:
+    """An ISO-8601 timestamp ("2026-11-26T18:00:00Z") or unix seconds/milliseconds as unix seconds; None if neither."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)) or (isinstance(value, str) and re.fullmatch(r"\d+(\.\d+)?", value.strip())):
+        number = float(value)
+        return int(number / 1000 if number > 1e11 else number) if number > 0 else None
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return int(parsed.timestamp())
+    return None
 
 
 @dataclass
@@ -684,13 +764,23 @@ class OpenAILLM(_ChatCompletionsLLM):
             if response.status_code != 200:
                 return None
             data = response.json()
-            limits = data.get("limits") or []
-            shares = [float(limit["remaining_value"]) / float(limit["max_value"])
-                      for limit in limits if not limit.get("model_filter") and float(limit.get("max_value") or 0) > 0]
-            if shares:
-                left = min(shares)
-                return UsageLeft(left, f"{100 * left:.0f}%")
-        except (httpx.HTTPError, ValueError, TypeError, KeyError):
+            limits = [limit for limit in data.get("limits") or []
+                      if not limit.get("model_filter") and float(limit.get("max_value") or 0) > 0]
+            windows: dict[int, UsageWindow] = {}
+            unnamed: list[float] = []
+            for limit in limits:
+                share = float(limit["remaining_value"]) / float(limit["max_value"])
+                seconds = _window_seconds(limit.get("limit_window"))
+                if seconds is None:
+                    unnamed.append(share)
+                elif seconds not in windows or share < (windows[seconds].remaining or 1.0):
+                    windows[seconds] = UsageWindow(seconds, share, _unix_time(limit.get("reset_at")))
+            summary = UsageLeft.of_windows(list(windows.values()))
+            if unnamed:  # a quota of no known length still counts towards the ring
+                left = min(unnamed + ([summary.remaining] if summary and summary.remaining is not None else []))
+                return UsageLeft(left, f"{100 * left:.0f}%", summary.windows if summary else ())
+            return summary
+        except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError):
             pass
         return None
 
@@ -952,7 +1042,25 @@ class KimiLLM(_ChatCompletionsLLM):
             log.debug("Kimi Code usage unavailable: %s", exc)
             return None
         share = _share(remaining, limit)
-        return UsageLeft(share, f"{round(share * 100)}%" if share is not None else "")
+        # `usage` is the weekly quota; `limits` the shorter rolling ones (a 5-hour window), as kimi-cli reads them.
+        windows = [UsageWindow(7 * 86400, share, _kimi_reset(usage))]
+        for item in body.get("limits") or []:
+            try:
+                detail = item.get("detail") or item
+                window = item.get("window") or {}
+                duration = int(window.get("duration") or item.get("duration") or detail.get("duration"))
+                unit = str(window.get("timeUnit") or item.get("timeUnit") or detail.get("timeUnit") or "")
+                factor = next((v for k, v in _TIME_UNIT_SECONDS.items() if k in unit.upper()), 1)
+                windows.append(UsageWindow(
+                    duration * factor,
+                    _share(float(detail["remaining"]), float(detail["limit"])),
+                    _kimi_reset(detail),
+                ))
+            except (AttributeError, KeyError, ValueError, TypeError):
+                continue  # one odd entry does not hide the others
+        if len(windows) == 1:
+            return UsageLeft(share, f"{round(share * 100)}%" if share is not None else "")
+        return UsageLeft.of_windows(windows) or UsageLeft(share, "")
 
     async def efforts(self, model: str) -> ModelEfforts:
         """Efforts of one Kimi model. Moonshot has no endpoint for this, so, in order:

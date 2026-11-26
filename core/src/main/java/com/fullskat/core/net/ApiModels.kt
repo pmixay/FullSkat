@@ -41,14 +41,19 @@ data class ModelEfforts(val efforts: List<String>, val default: String?)
 
 /**
  * One working model provider with its models. [usageRemaining] is the share of its budget left (0..1) for the
- * ring next to its name, null when the provider can't tell; [usageLabel] is e.g. "$4.20".
+ * ring next to its name, null when the provider can't tell; [usageLabel] is e.g. "$4.20". [usageWindows] are the
+ * separate quotas behind it (a 5-hour and a weekly one), shortest first; [usageRemaining] is then the tightest.
  */
 data class ProviderInfo(
     val id: String,
     val models: List<String>,
     val usageRemaining: Float?,
     val usageLabel: String,
+    val usageWindows: List<UsageWindow> = emptyList(),
 )
+
+/** One rolling quota: [seconds] long (18000 = 5 hours), [remaining] share left (null = unknown), resetting at [resetsAt] (unix seconds, 0 = unknown). */
+data class UsageWindow(val seconds: Long, val remaining: Float?, val resetsAt: Long = 0)
 
 /** What the server offers: models of the working providers, their efforts, and its master switches. */
 data class ModelInfo(

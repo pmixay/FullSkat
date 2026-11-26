@@ -43,7 +43,7 @@ own account.
 | Photos | Attach up to 4 images per question from the photo picker or the camera (plain Android capture); they are scaled to 1568 px before upload, shown as chips with progress, and sent to the model as images. Images shared from other apps open a new dialog with them attached. Tap a photo for a full-screen view with pinch zoom. |
 | Voice | The mic button dictates with Android's speech recognizer, on the device when it can; the words appear in the text field while you speak. |
 | Figures | Inline as on the watch; tap for a full-screen viewer with pinch zoom, drag and double tap to reset and replay. |
-| Settings | Model (grouped by provider, with each provider's budget ring), thinking effort (only the levels the model supports), web search and drawings: shared with your watch. |
+| Settings | Model (grouped by provider, with each provider's budget ring; tap the ring of a provider with a 5-hour and a weekly quota, such as Kimi Code or the OpenAI gateway, to see each one's share left and when it resets), thinking effort (only the levels the model supports), web search and drawings: shared with your watch. |
 
 ## What the watch app does
 

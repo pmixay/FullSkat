@@ -2,9 +2,16 @@ package com.fullskat.phone.ui
 
 import com.fullskat.core.account.AccountRepository
 import com.fullskat.core.net.ModelInfo
+import com.fullskat.core.net.UsageWindow
 
-/** One provider's section of the model picker. */
-data class ProviderGroup(val id: String, val models: List<String>, val usageRemaining: Float?, val usageLabel: String)
+/** One provider's section of the model picker; [usageWindows] are its separate quotas (5 hours, a week). */
+data class ProviderGroup(
+    val id: String,
+    val models: List<String>,
+    val usageRemaining: Float?,
+    val usageLabel: String,
+    val usageWindows: List<UsageWindow> = emptyList(),
+)
 
 /** Effort levels the server knows, lowest first (offered when it did not say what a model accepts). */
 val ALL_EFFORTS = listOf("none", "minimal", "low", "medium", "high", "xhigh", "max")
@@ -33,7 +40,7 @@ fun providerGroups(info: ModelInfo): List<ProviderGroup> {
     val offered = (listOf(info.model) + info.models.ifEmpty { if (info.providers.isEmpty()) FALLBACK_MODELS else emptyList() })
         .filterNotNull().distinct()
     val groups = LinkedHashMap<String, ProviderGroup>()
-    info.providers.forEach { groups[it.id] = ProviderGroup(it.id, it.models, it.usageRemaining, it.usageLabel) }
+    info.providers.forEach { groups[it.id] = ProviderGroup(it.id, it.models, it.usageRemaining, it.usageLabel, it.usageWindows) }
     offered.filter { m -> groups.values.none { m in it.models } }.forEach { m ->
         val id = inferProvider(m)
         val group = groups[id]

@@ -314,9 +314,13 @@ the server passcode; the file is then renamed to `state.json.migrated` and never
   the model accepts, lowest first, from `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; an empty
   list means effort is not adjustable.
 * `providers`: `{"<id>": {"ok": true, "reason": "", "models": ["..."], "usage": {"remaining": 0.4, "label":
-  "$4.20"} | null}}` for every configured provider (`anthropic`, `openrouter`, `kimi`, `openai`), in priority
-  order. Only working providers list models. `usage.remaining` is the share of budget left (0..1, may be
-  null) and `label` a display amount.
+  "$4.20", "windows": [...]} | null}}` for every configured provider (`anthropic`, `openrouter`, `kimi`, `openai`),
+  in priority order. Only working providers list models. `usage.remaining` is the share of budget left (0..1, may
+  be null) and `label` a display amount. `windows` lists the provider's separate rolling quotas, shortest first
+  (Kimi Code and the OpenAI gateway have a 5-hour and a weekly one; empty for the others):
+  `{"seconds": 18000, "remaining": 0.2, "resets_at": 1795705200}` with the window length, the share left (0..1,
+  may be null) and when it resets (unix seconds, null if unknown). When there are windows, `remaining` is the
+  tightest of them.
 * `web_search`, `figures`: the server's master switches.
 
 `GET /healthz` → `200 {"ok": true, "users": n}` (no auth).

@@ -132,8 +132,9 @@ async def test_gateway_efforts_usage_and_recovery(tmp_path: Path):
         if request.url.path.endswith("/models"):
             return httpx.Response(200, json=catalog())
         return httpx.Response(200, json={"limits": [
-            {"remaining_value": 75, "max_value": 100},
-            {"remaining_value": 40, "max_value": 100},
+            {"limit_window": "5h", "remaining_value": 75, "max_value": 100, "reset_at": "2026-11-26T15:00:00Z"},
+            {"limit_window": "7d", "remaining_value": 40, "max_value": 100, "reset_at": "2026-11-30T00:00:00Z"},
+            {"limit_window": "7d", "remaining_value": 1, "max_value": 2, "model_filter": "gpt-6-luna"},
         ]})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
@@ -144,6 +145,10 @@ async def test_gateway_efforts_usage_and_recovery(tmp_path: Path):
         assert (await router.models())[1] == MODELS
         info = await router.providers_info()
         assert info["openai"]["usage"]["remaining"] == .4
+        assert info["openai"]["usage"]["windows"] == [
+            {"seconds": 18000, "remaining": .75, "resets_at": 1795705200},
+            {"seconds": 604800, "remaining": .4, "resets_at": 1795996800},
+        ]
         efforts = await router.model_efforts(MODELS)
         assert efforts[MODELS[0]].default == "medium"
         assert efforts[MODELS[1]].efforts == ("low", "high")

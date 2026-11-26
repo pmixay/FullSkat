@@ -14,6 +14,7 @@ from fullskat_server.efforts import ModelEfforts, resolve_effort
 from fullskat_server.llm import (
     AnthropicLLM,
     UsageLeft,
+    UsageWindow,
     Health,
     KimiLLM,
     LLMError,
@@ -389,7 +390,7 @@ async def test_multi_llm_offers_only_working_providers(tmp_path: Path) -> None:
     assert "k3.1-pro" not in models and "claude-sonnet-5-5" in models
     info = await multi.providers_info()
     assert info["anthropic"]["ok"] is True and "claude-sonnet-5-5" in info["anthropic"]["models"]
-    assert info["anthropic"]["usage"] == {"remaining": 0.25, "label": "$5.00"}
+    assert info["anthropic"]["usage"] == {"remaining": 0.25, "label": "$5.00", "windows": []}
     assert info["kimi"] == {"ok": False, "reason": "upstream_auth", "models": [], "usage": None}
     with pytest.raises(LLMError) as down:  # a model of a failing provider is refused with the probe's reason
         [i async for i in multi.stream([], "k3.1-pro")]
@@ -632,6 +633,20 @@ async def test_kimi_code_usage_from_the_usages_endpoint(tmp_path: Path) -> None:
     assert await KimiLLM(make_settings(tmp_path, kimi_api_key="k"), mock_client(lambda r: httpx.Response(404))).usage() is None
     odd = mock_client(lambda r: httpx.Response(200, json={"something": "else"}))
     assert await KimiLLM(make_settings(tmp_path, kimi_api_key="k"), odd).usage() is None
+
+
+async def test_kimi_code_usage_splits_the_weekly_and_5_hour_quotas(tmp_path: Path) -> None:
+    body = {
+        "usage": {"limit": "100", "remaining": "60", "resetTime": "2026-11-30T00:00:00Z"},
+        "limits": [{
+            "window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+            "detail": {"limit": "100", "remaining": "20", "resetTime": "2026-11-26T15:00:00.123Z"},
+        }, {"window": {"duration": "x"}}],
+    }
+    llm = KimiLLM(make_settings(tmp_path, kimi_api_key="k"), mock_client(lambda r: httpx.Response(200, json=body)))
+    usage = await llm.usage()
+    assert usage == UsageLeft(0.2, "20%", (UsageWindow(18000, 0.2, 1795705200), UsageWindow(604800, 0.6, 1795996800)))
+    assert usage.to_json()["windows"][0] == {"seconds": 18000, "remaining": 0.2, "resets_at": 1795705200}
 
 
 async def test_kimi_probe_tolerates_a_missing_models_endpoint(tmp_path: Path) -> None:

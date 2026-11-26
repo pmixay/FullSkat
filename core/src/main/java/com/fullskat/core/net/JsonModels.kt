@@ -56,8 +56,23 @@ object JsonModels {
                 models = strings(o.optJSONArray("models")),
                 usageRemaining = usage?.takeIf { !it.isNull("remaining") }?.optDouble("remaining")?.toFloat(),
                 usageLabel = usage?.optString("label").orEmpty(),
+                usageWindows = usageWindows(usage?.optJSONArray("windows")),
             )
         }.toList()
+    }
+
+    private fun usageWindows(all: JSONArray?): List<UsageWindow> {
+        if (all == null) return emptyList()
+        return (0 until all.length()).mapNotNull { i ->
+            val o = all.optJSONObject(i) ?: return@mapNotNull null
+            val seconds = o.optLong("seconds")
+            if (seconds <= 0) return@mapNotNull null
+            UsageWindow(
+                seconds = seconds,
+                remaining = o.takeIf { !it.isNull("remaining") }?.optDouble("remaining")?.takeIf { !it.isNaN() }?.toFloat(),
+                resetsAt = if (o.isNull("resets_at")) 0 else o.optLong("resets_at"),
+            )
+        }.sortedBy { it.seconds }
     }
 
     /** A sign-up, linked status or /v1/me body; [token] fills in when the body has none (/v1/me). */
@@ -166,7 +181,11 @@ object JsonModels {
         put("providers", JSONObject().apply {
             info.providers.forEach { p ->
                 put(p.id, JSONObject().put("ok", true).put("models", JSONArray(p.models)).put("usage",
-                    JSONObject().put("remaining", p.usageRemaining?.toDouble() ?: JSONObject.NULL).put("label", p.usageLabel)))
+                    JSONObject().put("remaining", p.usageRemaining?.toDouble() ?: JSONObject.NULL).put("label", p.usageLabel)
+                        .put("windows", JSONArray(p.usageWindows.map { w ->
+                            JSONObject().put("seconds", w.seconds).put("remaining", w.remaining?.toDouble() ?: JSONObject.NULL)
+                                .put("resets_at", w.resetsAt)
+                        }))))
             }
         })
         put("web_search", info.webSearch)

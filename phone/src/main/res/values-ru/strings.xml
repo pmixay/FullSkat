@@ -109,6 +109,7 @@
     <string name="duration_s">%1$d с</string>
     <string name="duration_min">%1$d мин</string>
     <string name="duration_h">%1$d ч</string>
+    <string name="duration_d">%1$d д</string>
 
     <!-- Settings -->
     <string name="settings_assistant">Ассистент</string>
@@ -133,6 +134,12 @@
     <string name="effort_xhigh">Очень высокая</string>
     <string name="effort_max">Максимальная</string>
     <string name="usage_left">Осталось %1$d%%</string>
+    <string name="usage_show_limits">Показать лимиты</string>
+    <string name="usage_hide_limits">Скрыть лимиты</string>
+    <string name="usage_window_resets">%1$s · сброс через %2$s</string>
+    <string name="usage_window_week">Неделя</string>
+    <string name="usage_window_day">День</string>
+    <string name="usage_window_month">Месяц</string>
     <string name="sign_out">Выйти</string>
     <string name="sign_out_q">Выйти из FullSkat?</string>
     <string name="sign_out_desc">Телефон забудет диалоги и будет отвязан от аккаунта. Часы и другие устройства останутся подключены.</string>

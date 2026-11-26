@@ -111,6 +111,7 @@
     <string name="duration_s">%1$d s</string>
     <string name="duration_min">%1$d min</string>
     <string name="duration_h">%1$d h</string>
+    <string name="duration_d">%1$d d</string>
 
     <!-- Settings -->
     <string name="settings_assistant">Assistant</string>
@@ -135,6 +136,12 @@
     <string name="effort_xhigh">Extra high</string>
     <string name="effort_max">Max</string>
     <string name="usage_left">%1$d%% left</string>
+    <string name="usage_show_limits">Show limits</string>
+    <string name="usage_hide_limits">Hide limits</string>
+    <string name="usage_window_resets">%1$s · resets in %2$s</string>
+    <string name="usage_window_week">Week</string>
+    <string name="usage_window_day">Day</string>
+    <string name="usage_window_month">Month</string>
     <string name="sign_out">Sign out</string>
     <string name="sign_out_q">Sign out of FullSkat?</string>
     <string name="sign_out_desc">This phone forgets your dialogs and is unlinked from your account. Your watch and other devices stay signed in.</string>

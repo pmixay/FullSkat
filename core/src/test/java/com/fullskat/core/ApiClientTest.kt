@@ -4,9 +4,11 @@ import com.fullskat.core.net.ApiClient
 import com.fullskat.core.net.ApiException
 import com.fullskat.core.net.ChatEvent
 import com.fullskat.core.net.ChatRequest
+import com.fullskat.core.net.JsonModels
 import com.fullskat.core.net.LinkStatus
 import com.fullskat.core.net.LiveEvent
 import com.fullskat.core.net.Prefs
+import com.fullskat.core.net.UsageWindow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
@@ -44,7 +46,8 @@ class ApiClientTest {
 
     private val modelInfo = """"model":"claude-haiku-5-5","models":["claude-haiku-5-5","k3.1-pro"],"effort":"medium",
         "model_efforts":{"claude-haiku-5-5":{"efforts":["low","medium","high"],"default":"medium"},"k3.1-pro":{"efforts":[],"default":""}},
-        "providers":{"anthropic":{"ok":true,"reason":"","models":["claude-haiku-5-5"],"usage":{"remaining":0.4,"label":"$4"}},
+        "providers":{"anthropic":{"ok":true,"reason":"","models":["claude-haiku-5-5"],"usage":{"remaining":0.4,"label":"$4",
+                     "windows":[{"seconds":604800,"remaining":0.9,"resets_at":1795996800},{"seconds":18000,"remaining":0.4,"resets_at":null}]}},
                      "kimi":{"ok":false,"reason":"upstream_auth","models":[],"usage":null}},
         "web_search":true,"figures":false"""
 
@@ -63,6 +66,8 @@ class ApiClientTest {
         assertEquals(listOf("claude-haiku-5-5", "k3.1-pro"), s.info.models)
         assertEquals(listOf("anthropic"), s.info.providers.map { it.id }) // only working providers
         assertEquals(0.4f, s.info.providers[0].usageRemaining)
+        assertEquals(listOf(UsageWindow(18000, 0.4f, 0), UsageWindow(604800, 0.9f, 1795996800)), s.info.providers[0].usageWindows)
+        assertEquals(s.info.providers, JsonModels.modelInfo(JSONObject(JsonModels.modelInfoJson(s.info))).providers) // the cached copy keeps them
         assertEquals(emptyList<String>(), s.info.modelEfforts["k3.1-pro"]!!.efforts)
         assertFalse(s.info.figures)
     }
