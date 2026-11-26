@@ -1,6 +1,7 @@
 package com.fullskat.watch.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -16,7 +17,10 @@ import com.fullskat.watch.AppContainer
 import com.fullskat.watch.LaunchRequest
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.dialogs.DialogsScreen
-import com.fullskat.watch.ui.pair.PairScreen
+import com.fullskat.core.ui.rich.LocalAttachments
+import com.fullskat.core.ui.rich.LocalFigureOpener
+import com.fullskat.watch.ui.figure.FigureScreen
+import com.fullskat.watch.ui.link.LinkScreen
 import com.fullskat.watch.ui.settings.EffortScreen
 import com.fullskat.watch.ui.settings.ModelScreen
 import com.fullskat.watch.ui.settings.SettingsScreen
@@ -25,10 +29,11 @@ import kotlinx.coroutines.flow.StateFlow
 
 object Routes {
     const val DIALOGS = "dialogs"
-    const val PAIR = "pair"
+    const val LINK = "link"
     const val SETTINGS = "settings"
     const val MODEL = "model"
     const val EFFORT = "effort"
+    const val FIGURE = "figure"
     const val CHAT = "chat/{dialogId}?listen={listen}"
     fun chat(dialogId: String, listen: Boolean) = "chat/$dialogId?listen=$listen"
 }
@@ -54,16 +59,24 @@ fun FullSkatRoot(
                     val id = vm.newDialog()
                     nav.navigate(Routes.chat(id, listen = true)) { popUpTo(Routes.DIALOGS) }
                 } else {
-                    nav.navigate(Routes.PAIR)
+                    nav.navigate(Routes.LINK)
                 }
             }
             onLaunchRequestConsumed()
         }
+        // Unlinked (here, from the phone, or the token was revoked): back to the code.
+        LaunchedEffect(cfg.paired) {
+            if (!cfg.paired && nav.currentDestination?.route.let { it != null && it != Routes.LINK }) {
+                nav.navigate(Routes.LINK) { popUpTo(0) { inclusive = true } }
+            }
+        }
 
+        val openFigure: (String) -> Unit = { json -> vm.showFigure(json); nav.navigate(Routes.FIGURE) }
         AppScaffold {
+          CompositionLocalProvider(LocalFigureOpener provides openFigure, LocalAttachments provides container.core.attachments) {
             SwipeDismissableNavHost(
                 navController = nav,
-                startDestination = if (cfg.paired) Routes.DIALOGS else Routes.PAIR,
+                startDestination = if (cfg.paired) Routes.DIALOGS else Routes.LINK,
             ) {
                 composable(Routes.DIALOGS) {
                     DialogsScreen(
@@ -84,10 +97,10 @@ fun FullSkatRoot(
                     val listen = entry.arguments?.getBoolean("listen") ?: false
                     ChatScreen(vm = vm, dialogId = id, autoListen = listen)
                 }
-                composable(Routes.PAIR) {
-                    PairScreen(
+                composable(Routes.LINK) {
+                    LinkScreen(
                         vm = vm,
-                        onPaired = {
+                        onLinked = {
                             nav.navigate(Routes.DIALOGS) { popUpTo(0) { inclusive = true } }
                         },
                     )
@@ -97,8 +110,7 @@ fun FullSkatRoot(
                         vm = vm,
                         onModel = { nav.navigate(Routes.MODEL) },
                         onEffort = { nav.navigate(Routes.EFFORT) },
-                        onRepair = { nav.navigate(Routes.PAIR) },
-                        onUnpaired = { nav.navigate(Routes.PAIR) { popUpTo(0) { inclusive = true } } },
+                        onUnlinked = { nav.navigate(Routes.LINK) { popUpTo(0) { inclusive = true } } },
                     )
                 }
                 composable(Routes.MODEL) {
@@ -107,7 +119,12 @@ fun FullSkatRoot(
                 composable(Routes.EFFORT) {
                     EffortScreen(vm = vm, onDone = { nav.popBackStack() })
                 }
+                composable(Routes.FIGURE) {
+                    val json by vm.figure.collectAsStateWithLifecycle()
+                    json?.let { FigureScreen(it) }
+                }
             }
+          }
         }
     }
 }

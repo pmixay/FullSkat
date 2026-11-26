@@ -14,7 +14,7 @@ DEFAULT_KIMI_ALLOWED_MODELS = "k3.1-pro,kimi-for-coding"
 # OpenRouter's catalog (max/high/low/none) agree on the rest.
 DEFAULT_KIMI_MODEL_EFFORTS = {"k3.1-pro": "low,high,max", "kimi-for-coding": "low,high,max"}
 DEFAULT_ANTHROPIC_ALLOWED_MODELS = "claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5,claude-fable-5-1"
-DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.1-sol,gpt-6-astra"
+DEFAULT_OPENAI_ALLOWED_MODELS = "gpt-6.1-terra,gpt-6-luna,gpt-6.2-sol,gpt-6.2-astra"
 
 
 PROVIDERS = ("anthropic", "openrouter", "kimi", "openai")
@@ -27,11 +27,14 @@ class Settings(BaseSettings):
 
     # Chat providers are not pinned: every provider with an API key set is probed (see llm.MultiLLM) and
     # its models are offered to the watch for as long as the probe succeeds. Priority: anthropic, openrouter, kimi, openai.
-    # Let the model search the web (Anthropic web_search tool / OpenRouter web plugin)
+    # Let the model search the web (Anthropic web_search tool, OpenRouter web_search server tool, OpenAI web_search, Kimi $web_search)
     web_search: bool = True
     web_search_max_uses: int = Field(default=3, ge=1, le=20)
     # Stream the model's reasoning summary to the watch (SSE `thinking` events)
     show_thinking: bool = True
+    # Let the model draw figures (graphs, charts, geometry) with the `draw` tool; the watch renders them (see figures.py)
+    figures: bool = True
+    figures_max_per_answer: int = Field(default=3, ge=1, le=8)
 
     # Anthropic (chat)
     anthropic_api_key: str = ""
@@ -79,20 +82,30 @@ class Settings(BaseSettings):
     # Explicit per-model effort overrides; otherwise read gateway /models metadata.
     openai_model_efforts: dict[str, str] = Field(default_factory=dict)
 
-    # Identity and storage
+    # Identity and storage: DATA_DIR holds fullskat.db (SQLite) and attachments/ (images)
     server_name: str = "FullSkat"
     data_dir: Path = Path("./data")
 
-    # Rate limits
+    # Rate limits. Sign-up (POST /v1/register) per client IP; the PAIR_* names are kept from the old pairing.
     pair_per_min: int = Field(default=5, ge=1)
     pair_lock_failures: int = Field(default=10, ge=1)
     pair_lock_minutes: int = Field(default=15, ge=1)
+    # Code linking: starts per client IP, claims per user (with a lockout after consecutive wrong codes)
+    link_start_per_min: int = Field(default=20, ge=1)
+    link_claim_per_min: int = Field(default=10, ge=1)
+    link_claim_lock_failures: int = Field(default=5, ge=1)
+    link_claim_lock_minutes: int = Field(default=5, ge=1)
+    # Chat per user (all their devices together)
     chat_per_min: int = Field(default=20, ge=1)
     chat_per_day: int = Field(default=500, ge=1)
+    # Image uploads per user
+    uploads_per_hour: int = Field(default=60, ge=1)
 
     # Chat shaping
     max_history_messages: int = Field(default=24, ge=1)
     max_history_chars: int = Field(default=12000, ge=1)
+    # Images go to the model only with the newest N user messages that have any (older ones become "[image]")
+    max_history_image_messages: int = Field(default=2, ge=0)
 
     # Networking / misc
     trust_proxy_headers: bool = False

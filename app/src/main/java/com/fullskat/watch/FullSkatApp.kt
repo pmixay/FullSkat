@@ -2,9 +2,10 @@ package com.fullskat.watch
 
 import android.app.Application
 import android.content.Context
+import com.fullskat.core.FullSkatCore
+import com.fullskat.core.ServerEndpoint
+import com.fullskat.core.net.DeviceKind
 import com.fullskat.watch.audio.AudioCapture
-import com.fullskat.watch.data.db.AppDatabase
-import com.fullskat.watch.data.net.ApiClient
 import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.domain.AssistantTurn
 import com.fullskat.watch.speech.LocalSpeech
@@ -16,13 +17,14 @@ import kotlinx.coroutines.launch
 /** Hand-rolled dependency container: the app is small enough that a DI framework would only add APK size. */
 class AppContainer(val appContext: Context) {
     private val context: Context get() = appContext
-    val db: AppDatabase by lazy { AppDatabase.build(context) }
-    val settings: SettingsRepository by lazy { SettingsRepository(context) }
-    val api: ApiClient by lazy { ApiClient() }
+
+    /** Account, synced dialogs, chat and attachments, shared with the phone app's code. */
+    val core: FullSkatCore by lazy { FullSkatCore(context, ServerEndpoint.URL, DeviceKind.WATCH) }
+    val settings: SettingsRepository by lazy { SettingsRepository(context, core.session) }
     val speech: LocalSpeech by lazy { LocalSpeech(context) }
     val audioCapture: AudioCapture by lazy { AudioCapture() }
 
-    fun newTurn(): AssistantTurn = AssistantTurn(context, db.dialogDao(), settings, api, speech, audioCapture)
+    fun newTurn(): AssistantTurn = AssistantTurn(context, core, settings, speech, audioCapture)
 }
 
 class FullSkatApp : Application() {
@@ -32,12 +34,16 @@ class FullSkatApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        // Before v2 the dialogs lived only in this watch's own database; they now come from the account on the server.
+        if (getDatabasePath(LEGACY_DB).exists()) deleteDatabase(LEGACY_DB)
         // Start loading the speech model as early as possible, in parallel with the activity and
         // Compose start-up, so a cold start after the app was swiped away is not waiting on it.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { container.speech.warmUp() }
     }
 
     companion object {
+        private const val LEGACY_DB = "fullskat.db"
+
         fun container(context: Context): AppContainer = (context.applicationContext as FullSkatApp).container
     }
 }

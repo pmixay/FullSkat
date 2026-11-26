@@ -8,9 +8,10 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import androidx.wear.compose.material3.AppScaffold
-import com.fullskat.watch.data.db.DialogEntity
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
+import com.fullskat.core.db.DialogEntity
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.Roles
+import com.fullskat.core.net.MessageStatus
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.chat.ChatScreen
 import com.fullskat.watch.ui.theme.FullSkatTheme
@@ -46,22 +47,22 @@ class RichChatScreenshotTest {
 
     private val dir = File(System.getProperty("fullskat.screenshots.dir") ?: "build/screenshots").also { it.mkdirs() }
 
-    private fun conversation(name: String, vararg turns: Pair<Role, String>, states: Int = 9) {
+    private fun conversation(name: String, vararg turns: Pair<String, String>, states: Int = 9) {
         val container = FullSkatApp.container(ApplicationProvider.getApplicationContext())
         val id = "conv-$name"
         runBlocking {
-            val dao = container.db.dialogDao()
+            val dao = container.core.db.dao()
             val t0 = System.currentTimeMillis() - 600_000
-            val first = turns.first { it.first == Role.USER }.second
-            dao.insertDialog(DialogEntity(id, first.take(60), t0, t0))
+            val first = turns.first { it.first == Roles.USER }.second
+            dao.upsertDialog(DialogEntity(id, first.take(60), t0, t0))
             turns.forEachIndexed { i, (role, text) ->
-                dao.insertMessage(MessageEntity(dialogId = id, role = role, content = text.replace('§', '$').trim(), createdAt = t0 + i * 1000L))
+                dao.upsertMessage(MessageEntity(id = java.util.UUID.randomUUID().toString(), dialogId = id, role = role, content = text.replace('§', '$').trim(), createdAt = t0 + i * 1000L))
             }
         }
         compose.setContent { FullSkatTheme { AppScaffold { ChatScreen(AppViewModel(container), id, autoListen = false) } } }
         compose.waitForIdle()
         // The messages arrive from Room asynchronously: wait until the first question is on screen.
-        val probe = turns.first { it.first == Role.USER }.second.take(10)
+        val probe = turns.first { it.first == Roles.USER }.second.take(10)
         try {
             compose.waitUntil(10_000) { compose.onAllNodesWithText(probe, substring = true).fetchSemanticsNodes().isNotEmpty() }
         } catch (_: Throwable) {
@@ -78,8 +79,8 @@ class RichChatScreenshotTest {
         }
     }
 
-    private fun user(s: String) = Role.USER to s
-    private fun bot(s: String) = Role.ASSISTANT to s
+    private fun user(s: String) = Roles.USER to s
+    private fun bot(s: String) = Roles.ASSISTANT to s
 
     @Test fun quadratic() = conversation(
         "a01_quadratic",

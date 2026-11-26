@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +35,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -67,14 +72,15 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.fullskat.watch.R
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.db.Role
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.MessageStatus
+import com.fullskat.core.ui.rich.AttachmentImage
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.ui.AppViewModel
 import com.fullskat.watch.ui.components.ErrorChip
 import com.fullskat.watch.ui.components.UsageLimitCard
 import com.fullskat.watch.ui.components.errorText
-import com.fullskat.watch.ui.rich.RichText
+import com.fullskat.core.ui.rich.RichText
 import com.fullskat.watch.ui.theme.Tokens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -104,9 +110,8 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
         if (granted) vm.startTurn(dialogId) else permission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    LaunchedEffect(dialogId, autoListen) {
-        if (autoListen && !turn.busy) startListening()
-    }
+    AutoListen(dialogId, autoListen, busy = turn.busy, start = startListening)
+    StopListeningWhenLeaving(listening = turn is TurnState.Listening || turn is TurnState.Transcribing, stop = { vm.stopListening() })
     // Errors clear themselves after a few seconds.
     LaunchedEffect(turn) {
         val failure = turn as? TurnState.Failed
@@ -231,6 +236,41 @@ fun ChatScreen(vm: AppViewModel, dialogId: String, autoListen: Boolean) {
     }
 }
 
+/**
+ * Starts listening once when a chat is opened for that (the mic on the dialog list, the assist gesture), and
+ * never again for the same chat: not when it comes back from a figure or another screen on top of it, not after
+ * the activity is recreated. "Done" lives in the navigation entry's saved state, which outlives both.
+ */
+@Composable
+internal fun AutoListen(dialogId: String, autoListen: Boolean, busy: Boolean, start: () -> Unit) {
+    var done by rememberSaveable(dialogId) { mutableStateOf(false) }
+    LaunchedEffect(dialogId, autoListen) {
+        if (autoListen && !done) {
+            done = true
+            if (!busy) start()
+        }
+    }
+}
+
+/**
+ * The microphone belongs to this screen: leaving the chat (back button, swipe) or the app going to the background
+ * (screen off, another app) while it is listening stops listening instead of recording on unseen.
+ */
+@Composable
+internal fun StopListeningWhenLeaving(listening: Boolean, stop: () -> Unit) {
+    val isListening by rememberUpdatedState(listening)
+    val stopNow by rememberUpdatedState(stop)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP && isListening) stopNow() }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (isListening) stopNow()
+        }
+    }
+}
+
 /** A half circle (56 x 28 dp) whose flat edge rests on the bottom of the display. */
 @Composable
 private fun BottomHalfButton(onClick: () -> Unit, container: Color, content: @Composable () -> Unit) {
@@ -248,7 +288,7 @@ private fun BottomHalfButton(onClick: () -> Unit, container: Color, content: @Co
 
 @Composable
 private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
-    val isUser = m.role == Role.USER
+    val isUser = m.isUser
     val shape = if (isUser) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
     val showThinking = !isUser && thinking.isNotBlank()
     // While the model is still reasoning there is no answer yet: the thinking header replaces the "…" placeholder.
@@ -258,8 +298,19 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
         horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         if (showThinking) ThinkingBlock(thinking = thinking, live = m.pending && text.isBlank())
+        if (isUser) {
+            // images attached on the phone: small thumbnails above the question
+            val images = remember(m.attachments) { m.attachmentList }
+            if (images.isNotEmpty()) {
+                Row(Modifier.padding(bottom = 3.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    for (ref in images.take(4)) {
+                        AttachmentImage(ref, thumb = true, modifier = Modifier.size(if (images.size == 1) 92.dp else 44.dp).clip(RoundedCornerShape(10.dp)))
+                    }
+                }
+            }
+        }
         if (showBubble) {
-            if (isUser || text.isBlank()) {
+            if ((isUser || text.isBlank()) && !(isUser && text.isBlank())) {
                 Text(
                     text = text.ifBlank { "…" },
                     color = if (isUser) Tokens.onUserBubble else Tokens.onAssistantBubble,
@@ -277,12 +328,20 @@ private fun MessageRow(m: MessageEntity, text: String, thinking: String) {
                 RichText(
                     markdown = text,
                     color = Tokens.onAssistantBubble,
+                    animateFigures = m.pending, // figures draw themselves while the answer arrives
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Tokens.assistantBubble, shape)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 )
             }
+        }
+        if (isUser && m.status == MessageStatus.ERROR) {
+            Text(stringResource(R.string.not_sent), color = Tokens.error, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp, end = 4.dp))
+        }
+        if (!isUser && !m.pending) {
+            val sources = remember(m.sources) { m.sourceList }
+            if (sources.isNotEmpty()) SourcesBlock(sources)
         }
     }
 }

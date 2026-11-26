@@ -1,18 +1,19 @@
 package com.fullskat.watch.ui
 
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.fullskat.core.account.LinkState
+import com.fullskat.core.db.DialogSummary
+import com.fullskat.core.db.MessageEntity
+import com.fullskat.core.net.Prefs
 import com.fullskat.watch.AppContainer
-import com.fullskat.watch.data.db.DialogSummary
-import com.fullskat.watch.data.db.MessageEntity
-import com.fullskat.watch.data.net.ApiException
 import com.fullskat.watch.data.prefs.Settings
-import com.fullskat.watch.data.prefs.SettingsRepository
 import com.fullskat.watch.domain.AssistantTurn
 import com.fullskat.watch.domain.TurnState
 import com.fullskat.watch.tile.FullSkatTileService
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,17 +22,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-sealed interface PairUiState {
-    data object Idle : PairUiState
-    data object Busy : PairUiState
-    data class Failed(val reason: Reason, val retryAfterSec: Int = 0) : PairUiState {
-        enum class Reason { WRONG, LOCKED, UNREACHABLE, SERVER }
-    }
-    data class Success(val firstSetup: Boolean) : PairUiState
-}
-
 class AppViewModel(private val container: AppContainer) : ViewModel() {
-    private val dao = container.db.dialogDao()
+    private val core = container.core
+    private val dao = core.db.dao()
     private val turn: AssistantTurn = container.newTurn()
 
     val settings: StateFlow<Settings?> = container.settings.settings
@@ -40,20 +33,17 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     val turnState: StateFlow<TurnState> = turn.state
     val dialogs: Flow<List<DialogSummary>> = dao.observeDialogs()
 
-    private val _pairState = MutableStateFlow<PairUiState>(PairUiState.Idle)
-    val pairState: StateFlow<PairUiState> = _pairState.asStateFlow()
-
     fun messages(dialogId: String): Flow<List<MessageEntity>> = dao.observeMessages(dialogId)
 
     suspend fun newDialog(): String {
         val id = turn.createDialog()
-        dao.deleteEmptyDialogsExcept(id)
+        dao.deleteEmptyLocalDialogsExcept(id)
         return id
     }
 
     fun deleteDialog(id: String) {
         viewModelScope.launch {
-            dao.deleteDialog(id)
+            core.sync.deleteDialog(id)
             FullSkatTileService.requestUpdate(container.appContext)
         }
     }
@@ -64,6 +54,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun finishListening() = turn.finishListening()
+
+    /** The user left the chat or the app while the microphone was open: stop listening, send nothing. */
+    fun stopListening() = turn.cancelListening()
     fun cancelTurn() = turn.cancel()
     fun dismissError() = turn.dismissError()
 
@@ -72,63 +65,71 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.speech.warmUp() }
     }
 
-    /** Learns the server's current default model and allowlist (they depend on the provider it runs). */
+    /** Relearns who we are and what the server offers, and catches up with the dialogs (cheap when nothing changed). */
     fun refreshServerInfo() {
         viewModelScope.launch {
-            val cfg = container.settings.current()
-            val token = cfg.token ?: return@launch
-            try {
-                val me = container.api.me(cfg.serverUrl, token)
-                container.settings.saveServerModels(me.model, me.models, me.effort, me.modelEfforts, me.providers)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                // Offline, token or parsing problems surface on the first turn; the cached list stays usable.
-            }
+            if (core.account.refresh()) core.sync.sync()
         }
     }
 
-    fun pair(passcode: String, deviceName: String) {
+    // ------------------------------------------------------------ linking
+
+    private val _link = MutableStateFlow<LinkState?>(null)
+
+    /** The code to show while this watch waits to be linked from the phone. */
+    val link: StateFlow<LinkState?> = _link.asStateFlow()
+    private var linkJob: Job? = null
+
+    fun startLinking() {
+        if (linkJob?.isActive == true) return
+        linkJob = viewModelScope.launch {
+            core.account.link(deviceName()).collect { _link.value = it }
+        }
+    }
+
+    fun stopLinking() {
+        linkJob?.cancel()
+        linkJob = null
+        _link.value = null
+    }
+
+    /** Unlinks this watch from the account (it forgets the dialogs; they stay on the phone and the server). */
+    fun unlink() {
         viewModelScope.launch {
-            _pairState.value = PairUiState.Busy
-            try {
-                val deviceId = container.settings.deviceId()
-                val r = container.api.pair(passcode, deviceId, deviceName)
-                container.settings.savePairing(r.token, r.serverName, r.model, r.models, r.effort, r.modelEfforts, r.providers)
-                _pairState.value = PairUiState.Success(r.firstSetup)
-            } catch (e: ApiException) {
-                _pairState.value = when (e) {
-                    is ApiException.WrongPasscode -> PairUiState.Failed(PairUiState.Failed.Reason.WRONG)
-                    is ApiException.Locked -> PairUiState.Failed(PairUiState.Failed.Reason.LOCKED, e.retryAfterSec)
-                    is ApiException.RateLimited -> PairUiState.Failed(PairUiState.Failed.Reason.LOCKED, e.retryAfterSec)
-                    is ApiException.Network -> PairUiState.Failed(PairUiState.Failed.Reason.UNREACHABLE)
-                    is ApiException.Unauthorized, is ApiException.Server -> PairUiState.Failed(PairUiState.Failed.Reason.SERVER)
-                }
-            }
+            core.account.signOut()
+            FullSkatTileService.requestUpdate(container.appContext)
         }
     }
 
-    fun resetPairState() {
-        _pairState.value = PairUiState.Idle
-    }
-
-    fun unpair() {
-        viewModelScope.launch { container.settings.clearPairing() }
-    }
+    // ------------------------------------------------------------ settings (shared with the phone)
 
     fun setModel(model: String?) {
-        viewModelScope.launch { container.settings.setModel(model) }
+        viewModelScope.launch { if (model == null) core.sync.putPrefs(Prefs(), setOf("model")) else core.sync.putPrefs(Prefs(model = model)) }
     }
 
     fun setEffort(effort: String?) {
-        viewModelScope.launch { container.settings.setEffort(effort) }
+        viewModelScope.launch { if (effort == null) core.sync.putPrefs(Prefs(), setOf("effort")) else core.sync.putPrefs(Prefs(effort = effort)) }
     }
 
     fun setWebSearch(enabled: Boolean) {
-        viewModelScope.launch { container.settings.setWebSearch(enabled) }
+        viewModelScope.launch { core.sync.putPrefs(Prefs(webSearch = enabled)) }
+    }
+
+    fun setFigures(enabled: Boolean) {
+        viewModelScope.launch { core.sync.putPrefs(Prefs(figures = enabled)) }
     }
 
     fun setHaptics(enabled: Boolean) {
         viewModelScope.launch { container.settings.setHaptics(enabled) }
+    }
+
+    private val _figure = MutableStateFlow<String?>(null)
+
+    /** The figure open in the full-screen viewer (its ```figure JSON). */
+    val figure: StateFlow<String?> = _figure
+
+    fun showFigure(json: String) {
+        _figure.value = json
     }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {
@@ -148,5 +149,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
         /** Reasoning effort levels the server accepts, lowest first. */
         val EFFORTS = listOf("low", "medium", "high", "xhigh", "max")
+
+        fun deviceName(): String = listOf(Build.MANUFACTURER, Build.MODEL).filter { !it.isNullOrBlank() }.distinct()
+            .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }.ifBlank { "Watch" }
     }
 }

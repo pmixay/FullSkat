@@ -29,6 +29,7 @@ from fullskat_server.llm import (
 
 
 def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
+    overrides.setdefault("figures", False)  # the draw tool has its own tests (test_figures.py)
     return Settings(_env_file=None, data_dir=tmp_path, anthropic_api_key="test-key", **overrides)
 
 
@@ -235,12 +236,14 @@ async def test_anthropic_errors_map_to_protocol_codes(tmp_path: Path) -> None:
     assert caught.value.code == "upstream_error"
 
 
-def test_openrouter_body_enables_web_plugin(tmp_path: Path) -> None:
+def test_openrouter_body_enables_the_web_search_server_tool(tmp_path: Path) -> None:
     llm = OpenRouterLLM(make_settings(tmp_path), httpx.AsyncClient())
     body = llm._body([{"role": "user", "content": "hi"}], "openai/gpt-5.5")
-    assert body["plugins"] == [{"id": "web", "max_results": 3}]
+    # The deprecated `web` plugin searched on every request; the server tool lets the model decide.
+    assert body["tools"] == [{"type": "openrouter:web_search", "parameters": {"max_uses": 3}}]
+    assert "plugins" not in body
     off = OpenRouterLLM(make_settings(tmp_path, web_search=False), httpx.AsyncClient())
-    assert "plugins" not in off._body([{"role": "user", "content": "hi"}], "openai/gpt-5.5")
+    assert "tools" not in off._body([{"role": "user", "content": "hi"}], "openai/gpt-5.5")
 
 
 def test_openrouter_body_sends_the_given_effort_and_honors_web_flag(tmp_path: Path) -> None:
@@ -249,11 +252,11 @@ def test_openrouter_body_sends_the_given_effort_and_honors_web_flag(tmp_path: Pa
     assert "reasoning" not in llm._body(messages, "m")
     assert llm._body(messages, "m", effort="max")["reasoning"] == {"effort": "max"}
     assert llm._body(messages, "m", effort="low")["reasoning"] == {"effort": "low"}
-    assert "plugins" not in llm._body(messages, "m", web_search=False)
-    assert "plugins" in llm._body(messages, "m", web_search=True)
+    assert "tools" not in llm._body(messages, "m", web_search=False)
+    assert "tools" in llm._body(messages, "m", web_search=True)
 
     off = OpenRouterLLM(make_settings(tmp_path, web_search=False), httpx.AsyncClient())
-    assert "plugins" not in off._body(messages, "m", web_search=True)  # the server switch wins
+    assert "tools" not in off._body(messages, "m", web_search=True)  # the server switch wins
 
 
 def test_openrouter_delta_parsing_extracts_reasoning() -> None:
@@ -372,7 +375,7 @@ async def test_multi_llm_routes_by_model_and_clamps_effort(tmp_path: Path) -> No
     [i async for i in multi.stream([], "claude-haiku-5-5")]
     assert claude.sent["effort"] == "medium"  # model default
     assert [i async for i in multi.stream([], "k3.1-pro", effort="high")] == ["kimi"]
-    assert kimi.sent == {"model": "k3.1-pro", "effort": None, "web_search": None}  # not adjustable
+    assert kimi.sent == {"model": "k3.1-pro", "effort": None, "web_search": None, "figures": None}  # not adjustable
     with pytest.raises(LLMError):
         [i async for i in multi.stream([], "unknown-model")]
 
@@ -656,3 +659,50 @@ async def test_kimi_drops_web_search_when_the_endpoint_rejects_the_tool(tmp_path
     scripted = len(requests)
     assert [i async for i in llm.stream([{"role": "user", "content": "q2"}], "kimi-for-coding")] == ["ok"]
     assert len(requests) == scripted + 1 and "tools" not in requests[-1]
+
+
+# ---- web sources ------------------------------------------------------------
+
+
+async def test_anthropic_reports_cited_sources_across_pause_turns(tmp_path: Path) -> None:
+    from fullskat_server.sources import Source, Sources
+
+    results = SimpleNamespace(type="web_search_tool_result", tool_use_id="s", content=[
+        SimpleNamespace(type="web_search_result", url="https://a.example/1", title="A"),
+        SimpleNamespace(type="web_search_result", url="https://b.example/2", title="B"),
+    ])
+    cited = SimpleNamespace(type="text", text="Rain.", citations=[
+        SimpleNamespace(type="web_search_result_location", url="https://b.example/2", title="B", cited_text="rain"),
+    ])
+    turns = [(["Rain"], final_message("pause_turn", content=[results])), (["."], final_message(content=[cited]))]
+    llm, _ = llm_with(make_settings(tmp_path), turns)
+    items = await collect(llm, MESSAGES)
+    assert items[-2:] == [Sources((Source("https://b.example/2", "B"),)), Usage(prompt_tokens=20, completion_tokens=6)]
+
+    quiet, _ = llm_with(make_settings(tmp_path), [(["Hi"], final_message())])
+    assert not any(isinstance(i, Sources) for i in await collect(quiet, MESSAGES))  # no search, no sources item
+
+
+async def test_openrouter_stream_reports_url_citations(tmp_path: Path) -> None:
+    from fullskat_server.sources import Source, Sources
+
+    requests: list[dict[str, Any]] = []
+    citation = {"type": "url_citation", "url_citation": {
+        "url": "https://weather.example/msk", "title": "Moscow weather", "content": "+8", "start_index": 0, "end_index": 5,
+    }}
+    body = sse(
+        {"choices": [{"delta": {"content": "+8 "}}]},
+        {"choices": [{"delta": {"content": "°C", "annotations": [citation]}, "finish_reason": "stop"}]},
+        {"choices": [], "usage": {"prompt_tokens": 30, "completion_tokens": 4}},
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, content=body)
+
+    llm = OpenRouterLLM(make_settings(tmp_path, openrouter_api_key="o"), mock_client(handler))
+    items = [i async for i in llm.stream([{"role": "user", "content": "weather?"}], "openai/gpt-6.1-terra")]
+    assert items == [
+        "+8 ", "°C", Sources((Source("https://weather.example/msk", "Moscow weather"),)), Usage(30, 4),
+    ]
+    assert requests[0]["tools"][0]["type"] == "openrouter:web_search"

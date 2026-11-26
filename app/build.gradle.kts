@@ -6,7 +6,6 @@ import javax.inject.Inject
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
 }
 
 // On-device Russian speech recognition: sherpa-onnx runtime (AAR, see settings.gradle.kts) plus the
@@ -99,8 +98,8 @@ android {
 
     androidResources {
         localeFilters += listOf("en", "ru")
-        // The ONNX model is memory-mapped/read as is; compressing it only slows loading down.
-        noCompress += "onnx"
+        // The ONNX model is stored compressed (25 MB -> ~20 MB): the app copies it out of the APK once per installed
+        // build into internal storage and loads it from there (LocalSpeech), so it is inflated only on that first start.
     }
 
     testOptions {
@@ -108,17 +107,17 @@ android {
             isIncludeAndroidResources = true
             all {
                 // ./gradlew :app:testDebugUnitTest -Pscreenshots renders the screens to app/build/screenshots (see ScreenshotTest).
+                // Robolectric (screenshots, Compose tests such as AutoListenTest) reaches into JDK internals (Java 17+).
+                it.jvmArgs(
+                    "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+                    "--add-opens=java.base/java.lang=ALL-UNNAMED",
+                    "--add-opens=java.base/java.io=ALL-UNNAMED",
+                    "--add-opens=java.base/java.util=ALL-UNNAMED",
+                )
                 if (providers.gradleProperty("screenshots").isPresent) {
                     it.systemProperty("fullskat.screenshots", "true")
                     it.systemProperty("roborazzi.test.record", "true")
                     it.maxHeapSize = "3g"
-                    // Robolectric's native-graphics runtime reaches into JDK internals (Java 17+).
-                    it.jvmArgs(
-                        "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
-                        "--add-opens=java.base/java.lang=ALL-UNNAMED",
-                        "--add-opens=java.base/java.io=ALL-UNNAMED",
-                        "--add-opens=java.base/java.util=ALL-UNNAMED",
-                    )
                 }
             }
         }
@@ -126,6 +125,10 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.version", "kotlin/**", "DebugProbesKt.bin")
+        // The recognizer's native library (onnxruntime linked in) is 23 MB for arm64 and 16 MB for armv7. Stored
+        // compressed it takes ~16 MB for both; the installer unpacks only the watch's own ABI. This keeps the APK small
+        // to copy and to carry inside the phone app, at no extra storage on the watch.
+        jniLibs.useLegacyPackaging = true
     }
 }
 
@@ -147,12 +150,9 @@ kotlin {
     }
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-    arg("room.generateKotlin", "true")
-}
 
 dependencies {
+    implementation(project(":core"))
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
@@ -168,12 +168,10 @@ dependencies {
     implementation(libs.wear.compose.navigation)
     implementation(libs.wear.tooling.preview)
     implementation(libs.wear.input)
+    implementation(libs.wear.remote.interactions)
     implementation(libs.wear.tiles)
     implementation(libs.wear.protolayout)
     implementation(libs.wear.complications.datasource.ktx)
-    implementation(libs.room.runtime)
-    implementation(libs.room.ktx)
-    ksp(libs.room.compiler)
     implementation(libs.datastore.preferences)
     implementation(libs.okhttp)
     implementation("com.k2fsa.sherpa:sherpa-onnx-static-link-onnxruntime:${libs.versions.sherpaOnnx.get()}@aar")
@@ -182,6 +180,7 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20260814") // the real org.json for JVM tests (android.jar only has stubs)
     testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("androidx.test:core:1.8.0-alpha01")
     testImplementation("androidx.compose.ui:ui-test-junit4")

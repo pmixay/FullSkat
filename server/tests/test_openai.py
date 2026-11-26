@@ -1,4 +1,4 @@
-"""Responses gateway compatibility and the unchanged watch protocol."""
+"""Responses gateway compatibility and the chat protocol on top of it."""
 
 import json
 from pathlib import Path
@@ -11,10 +11,11 @@ from fullskat_server.config import Settings
 from fullskat_server.llm import LLMError, OpenAILLM, Thinking, Usage, create_llm
 
 
-MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"]
+MODELS = ["gpt-6.1-terra", "gpt-6-luna", "gpt-6.2-sol", "gpt-6.2-astra"]
 
 
 def settings(tmp_path: Path, **kwargs) -> Settings:
+    kwargs.setdefault("figures", False)  # the draw tool has its own tests (test_figures.py)
     return Settings(_env_file=None, data_dir=tmp_path, openai_api_key="test-key",
                     openai_base_url="http://gateway/v1", **kwargs)
 
@@ -60,13 +61,14 @@ async def test_gateway_stream_translates_to_watch_items(tmp_path: Path):
     assert body["store"] is False and body["stream"] is True
     assert body["reasoning"] == {"effort": "low", "summary": "auto"}
     assert body["tools"] == [{"type": "web_search"}]
+    assert body["include"] == ["web_search_call.action.sources"]  # on Codex LB's include allowlist
     assert "max_tool_calls" not in body  # Codex backend rejects this parameter.
 
 
 async def test_openai_respects_search_and_summary_switches(tmp_path: Path):
     def handler(request):
         body = json.loads(request.content)
-        assert "tools" not in body and "reasoning" not in body
+        assert "tools" not in body and "reasoning" not in body and "include" not in body
         return httpx.Response(200, content=sse(
             {"type": "response.reasoning_summary_text.delta", "delta": "hidden"}, completed()))
 
@@ -154,7 +156,7 @@ async def test_gateway_efforts_usage_and_recovery(tmp_path: Path):
         assert (await router.models())[1] == MODELS
 
 
-async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
+async def test_existing_account_works_after_server_restart(tmp_path: Path):
     cfg = settings(tmp_path)
 
     def handler(request):
@@ -170,10 +172,10 @@ async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
         app.state.llm = create_llm(cfg, gateway)
         async with app.router.lifespan_context(app):
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://watch") as watch:
-                paired = await watch.post("/v1/pair", json={"device_id": "watch", "passcode": "1234"})
-                assert paired.status_code == 201
-                auth = {"Authorization": f"Bearer {paired.json()['token']}"}
-        state = (tmp_path / "state.json").read_bytes()
+                registered = await watch.post("/v1/register", json={
+                    "device_id": "watch", "passcode": "1234", "name": "Owner", "device_kind": "watch"})
+                assert registered.status_code == 201
+                auth = {"Authorization": f"Bearer {registered.json()['token']}"}
         restarted = create_app(cfg)
         restarted.state.llm = create_llm(cfg, gateway)
         async with restarted.router.lifespan_context(restarted):
@@ -187,4 +189,33 @@ async def test_existing_pairing_works_after_server_restart(tmp_path: Path):
                     assert result.status_code == 200
                     assert 'event: delta\ndata: {"text": "OK"}' in result.text
                     assert "event: done" in result.text and "event: error" not in result.text
-        assert (tmp_path / "state.json").read_bytes() == state
+
+
+async def test_gateway_reports_cited_and_consulted_sources(tmp_path: Path):
+    from fullskat_server.sources import Source, Sources
+
+    search = {"type": "response.output_item.done", "output_index": 0, "item": {
+        "type": "web_search_call", "id": "ws_1", "status": "completed",
+        "action": {"type": "search", "query": "weather", "sources": [
+            {"type": "url", "url": "https://consulted.example/"}, {"type": "api", "name": "oai-weather"},
+        ]},
+    }}
+    annotation = {"type": "response.output_text.annotation.added", "output_index": 1, "content_index": 0,
+                  "annotation_index": 0, "annotation": {
+                      "type": "url_citation", "url": "https://cited.example/a?utm_source=openai", "title": "Cited",
+                      "start_index": 0, "end_index": 3}}
+
+    def handler(request):
+        body = json.loads(request.content)
+        if body["input"][0]["content"] == "cited":
+            return httpx.Response(200, content=sse(
+                {"type": "response.web_search_call.in_progress", "item_id": "ws_1", "output_index": 0},
+                search, {"type": "response.output_text.delta", "delta": "+8"}, annotation, completed()))
+        return httpx.Response(200, content=sse(search, {"type": "response.output_text.delta", "delta": "+8"}, completed()))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        llm = OpenAILLM(settings(tmp_path), client)
+        cited = [x async for x in llm.stream([{"role": "user", "content": "cited"}], MODELS[0])]
+        uncited = [x async for x in llm.stream([{"role": "user", "content": "plain"}], MODELS[0])]
+    assert cited == ["+8", Sources((Source("https://cited.example/a", "Cited"),)), Usage(12, 7)]
+    assert uncited == ["+8", Sources((Source("https://consulted.example/", ""),)), Usage(12, 7)]
